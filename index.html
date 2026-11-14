@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Trip Pick">
+<meta name="theme-color" content="#111214">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<title>Trip Pick</title>
+<style>
+:root{
+  --bg:#111214; --panel:#1b1d21; --panel2:#24272c; --line:#33373e;
+  --text:#f2f2f0; --muted:#a3a7ad; --accent:#f2b134; --accent-ink:#1a1408;
+  --good:#7fd18b; --bad:#ff8a7a; --r:14px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);
+  font:16px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif}
+body{padding:env(safe-area-inset-top) env(safe-area-inset-right) calc(env(safe-area-inset-bottom) + 24px) env(safe-area-inset-left)}
+header{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;
+  padding:12px 16px;background:rgba(17,18,20,.92);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+header h1{font-size:19px;margin:0;font-weight:700;letter-spacing:.2px}
+header h1 span{color:var(--accent)}
+.cost{font-size:12px;color:var(--muted);text-align:right}
+.iconbtn{background:none;border:0;color:var(--text);font-size:22px;padding:4px 6px;margin-left:8px}
+main{max-width:640px;margin:0 auto;padding:12px 14px}
+section{background:var(--panel);border-radius:var(--r);padding:16px;margin:12px 0}
+section h2{font-size:17px;margin:0 0 10px}
+.step{display:inline-block;width:24px;height:24px;border-radius:12px;background:var(--accent);color:var(--accent-ink);
+  font-size:14px;font-weight:700;text-align:center;line-height:24px;margin-right:8px}
+p.hint,.hint{color:var(--muted);font-size:14px;margin:6px 0}
+label.field{display:block;font-size:14px;color:var(--muted);margin:12px 0 4px}
+input[type=text],input[type=password],select,textarea{width:100%;background:var(--panel2);color:var(--text);
+  border:1px solid var(--line);border-radius:10px;padding:11px 12px;font:inherit;font-size:16px}
+textarea{min-height:96px;resize:vertical}
+.btn{display:block;width:100%;border:0;border-radius:12px;padding:14px 16px;font:inherit;font-weight:650;
+  background:var(--accent);color:var(--accent-ink);text-align:center;margin-top:12px;cursor:pointer}
+.btn.secondary{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
+.btn:disabled{opacity:.45}
+.row{display:flex;gap:10px}.row>*{flex:1}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:12px}
+.grid .cell{position:relative;aspect-ratio:1;border-radius:6px;overflow:hidden;background:var(--panel2)}
+.grid img{width:100%;height:100%;object-fit:cover;display:block}
+.badge{position:absolute;left:4px;top:4px;background:rgba(0,0,0,.65);color:#fff;font-size:11px;font-weight:700;
+  padding:2px 6px;border-radius:8px}
+.badge.top{background:var(--accent);color:var(--accent-ink)}
+.cell.dim img{opacity:.35}
+.cell.sel{outline:3px solid var(--accent);outline-offset:-3px}
+.winner img{width:100%;border-radius:10px;display:block}
+.reason{font-size:15px;margin:10px 0 0}
+.strip{display:flex;gap:8px;overflow-x:auto;padding:4px 0 2px;margin-top:12px}
+.strip .f{flex:0 0 92px;cursor:pointer}
+.strip .f img{width:92px;height:92px;object-fit:cover;border-radius:8px;display:block}
+.strip .f.sel img{outline:3px solid var(--accent);outline-offset:-3px}
+.strip .f small{display:block;font-size:11px;color:var(--muted);margin-top:3px;line-height:1.25}
+details summary{color:var(--accent);font-size:14px;margin-top:12px;cursor:pointer}
+.list .item{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.list .item img{width:56px;height:56px;object-fit:cover;border-radius:6px;flex:0 0 56px}
+.list .item .s{font-weight:700;width:34px;text-align:right;flex:0 0 34px}
+.list .item .n{font-size:13px;color:var(--muted)}
+.previewWrap{position:relative;background:#000;border-radius:10px;overflow:hidden;touch-action:pan-y;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}
+#preview{display:block;width:100%;height:auto}
+.holdTag{position:absolute;right:8px;bottom:8px;font-size:12px;background:rgba(0,0,0,.6);padding:3px 8px;border-radius:10px;color:#ddd}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chip{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:16px;padding:7px 12px;font:inherit;font-size:14px}
+.chip.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:650}
+.slider{margin:12px 0}
+.slider .top{display:flex;justify-content:space-between;font-size:14px}
+.slider .top span:last-child{color:var(--muted);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--accent);height:28px}
+ul.notes{margin:8px 0 0;padding-left:20px;font-size:14px;color:#d6d6d2}
+ul.notes li{margin:3px 0}
+.cap{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:8px;cursor:pointer;font-size:15px;background:var(--panel2)}
+.cap.on{border-color:var(--accent)}
+.cap b{display:block;font-size:12px;color:var(--muted);font-weight:600;margin-bottom:2px}
+.tags .chip{font-size:13px;padding:5px 10px}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);
+  background:#2b2e34;border:1px solid var(--line);padding:10px 16px;border-radius:12px;font-size:14px;z-index:30;
+  max-width:90vw;text-align:center;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:20;display:none;align-items:center;justify-content:center;padding:24px}
+.overlay.show{display:flex}
+.overlay .box{background:var(--panel);border-radius:var(--r);padding:20px;max-width:420px;width:100%;text-align:center}
+.spinner{width:34px;height:34px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--accent);margin:4px auto 12px;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.bar{height:6px;background:var(--panel2);border-radius:3px;overflow:hidden;margin-top:12px}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+.sheet{position:fixed;inset:0;z-index:25;background:var(--bg);overflow:auto;display:none;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+.sheet.show{display:block}
+.err{color:var(--bad);font-size:14px;margin-top:8px;white-space:pre-wrap}
+.ok{color:var(--good);font-size:14px;margin-top:8px}
+.hidden{display:none!important}
+a{color:var(--accent)}
+a.btn{text-decoration:none}
+.small{font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Trip <span>Pick</span></h1>
+  <div style="display:flex;align-items:center">
+    <div class="cost" id="costLabel">$0.00 used</div>
+    <button class="iconbtn" id="openSettings" aria-label="Settings">⚙︎</button>
+  </div>
+</header>
+
+<main>
+  <section id="lastPost" class="hidden">
+    <h2>Your last edit is ready</h2>
+    <p class="hint">Saved on this phone in case the page reloaded while you were posting.</p>
+    <div class="row">
+      <button class="btn secondary" id="lastShare">Share it</button>
+      <button class="btn secondary" id="lastCopy">Copy caption</button>
+    </div>
+    <button class="btn secondary" id="lastClear" style="margin-top:8px">Clear</button>
+  </section>
+
+  <section id="needKey" class="hidden">
+    <h2>First, add your Claude API key</h2>
+    <p class="hint">The app uses your own API credits. Your key stays in this browser on this phone and is only sent to Anthropic.</p>
+    <button class="btn" id="needKeyBtn">Add API key</button>
+  </section>
+
+  <!-- STEP 1 -->
+  <section id="s1">
+    <h2><span class="step">1</span>Choose your trip photos</h2>
+    <p class="hint">Tap below, then pick from <b>Collections</b> (an album, or search a place like "Hanoi"). Select as many as you like, up to 150.</p>
+    <label class="btn" for="fileInput" id="pickLabel">Choose photos</label>
+    <input id="fileInput" type="file" accept="image/*" multiple class="hidden">
+    <div id="pickInfo" class="hint"></div>
+    <div class="grid" id="thumbGrid"></div>
+
+    <label class="field" for="tripNotes">Where and what (optional, helps the caption)</label>
+    <input type="text" id="tripNotes" placeholder="e.g. Boat ride through Tam Coc, Ninh Binh">
+    <div class="row">
+      <div>
+        <label class="field" for="dest">Posting to</label>
+        <select id="dest">
+          <option value="instagram">Instagram</option>
+          <option value="facebook">Facebook</option>
+          <option value="other">Somewhere else</option>
+        </select>
+      </div>
+      <div>
+        <label class="field" for="style">Edit style</label>
+        <select id="style">
+          <option value="natural">Natural</option>
+          <option value="punchy">A bit punchier</option>
+          <option value="warm">Warm and soft</option>
+          <option value="moody">Moody</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn" id="rankBtn" disabled>Find my best shot</button>
+    <div class="small" id="rankEstimate" style="margin-top:6px;text-align:center"></div>
+    <div class="err" id="rankErr"></div>
+  </section>
+
+  <!-- STEP 2 -->
+  <section id="s2" class="hidden">
+    <h2><span class="step">2</span>The pick</h2>
+    <div class="winner"><img id="winnerImg" alt=""></div>
+    <p class="reason" id="winnerReason"></p>
+    <div class="hint">Other finalists. Tap one to use it instead.</div>
+    <div class="strip" id="finalStrip"></div>
+    <details>
+      <summary>See every photo's score</summary>
+      <div class="list" id="allList"></div>
+    </details>
+    <button class="btn" id="editBtn">Edit this one</button>
+    <div class="err" id="editErr"></div>
+  </section>
+
+  <!-- STEP 3 -->
+  <section id="s3" class="hidden">
+    <h2><span class="step">3</span>Edit</h2>
+    <div class="previewWrap" id="previewWrap">
+      <canvas id="preview"></canvas>
+      <div class="holdTag">Hold to see original</div>
+    </div>
+    <ul class="notes" id="editNotes"></ul>
+
+    <label class="field">Crop</label>
+    <div class="chips" id="aspectChips"></div>
+    <div class="slider"><div class="top"><span>Zoom in</span><span id="v_zoom"></span></div>
+      <input type="range" id="zoom" min="1" max="2.5" step="0.01" value="1"></div>
+
+    <div id="sliders"></div>
+
+    <div class="row">
+      <button class="btn secondary" id="resetClaude">Claude's edit</button>
+      <button class="btn secondary" id="resetNone">No edits</button>
+    </div>
+    <div class="row">
+      <select id="style2" style="margin-top:12px">
+        <option value="natural">Natural</option>
+        <option value="punchy">A bit punchier</option>
+        <option value="warm">Warm and soft</option>
+        <option value="moody">Moody</option>
+      </select>
+      <button class="btn secondary" id="redoEdit" style="margin-top:12px">Redo with this style</button>
+    </div>
+    <button class="btn" id="toPost">Looks good</button>
+  </section>
+
+  <!-- STEP 4 -->
+  <section id="s4" class="hidden">
+    <h2><span class="step">4</span>Caption and post</h2>
+    <div id="capList"></div>
+    <label class="field" for="capText">Your caption (edit freely)</label>
+    <textarea id="capText"></textarea>
+    <div class="tags">
+      <label class="field">Hashtags (tap to turn off)</label>
+      <div class="chips" id="tagChips"></div>
+    </div>
+    <label class="field">Alt text (describes the photo for people using screen readers)</label>
+    <textarea id="altText" style="min-height:60px"></textarea>
+    <button class="btn secondary" id="copyAlt" style="margin-top:8px;padding:10px">Copy alt text</button>
+    <div class="row">
+      <div>
+        <label class="field" for="exportSize">Photo size</label>
+        <select id="exportSize">
+          <option value="4096">Full quality</option>
+          <option value="2048">Smaller file</option>
+        </select>
+      </div>
+    </div>
+    <div class="hint" id="exportInfo"></div>
+    <button class="btn" id="shareBtn" disabled>Preparing photo…</button>
+    <div class="row">
+      <button class="btn secondary" id="copyCap">Copy caption</button>
+      <a class="btn secondary" id="dlLink" download="trip-pick.jpg" href="#">Save file</a>
+    </div>
+    <p class="hint">Share opens your share sheet: pick Instagram, Facebook, or Save Image. The caption is copied first so you can paste it. The saved photo has no location or camera data in it.</p>
+    <button class="btn secondary" id="startOver">Start over</button>
+  </section>
+</main>
+
+<!-- Settings -->
+<div class="sheet" id="settings">
+  <header><h1>Settings</h1><button class="iconbtn" id="closeSettings" aria-label="Close">✕</button></header>
+  <main>
+    <section>
+      <h2>Claude API key</h2>
+      <p class="hint">Make one at <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener">platform.claude.com</a>. It's saved only in this browser on this phone and sent only to Anthropic's API. A key with a spend limit is a good idea.</p>
+      <input type="password" id="apiKey" placeholder="sk-ant-..." autocomplete="off" autocapitalize="off" spellcheck="false">
+      <div class="row">
+        <button class="btn" id="saveKey">Save and test</button>
+        <button class="btn secondary" id="forgetKey">Forget key</button>
+      </div>
+      <div id="keyMsg"></div>
+    </section>
+    <section>
+      <h2>Model</h2>
+      <select id="model">
+        <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (good and cheap, default)</option>
+        <option value="claude-opus-5-5">Claude Opus 5.5 (sharper eye, about 2x cost)</option>
+        <option value="claude-haiku-5-5">Claude Haiku 5.5 (cheapest, rougher picks)</option>
+      </select>
+      <p class="hint">A typical run of 40 photos with Sonnet costs a few cents.</p>
+    </section>
+    <section>
+      <h2>Sound like you</h2>
+      <p class="hint">Paste two or three captions you've written before. Claude will match how you write.</p>
+      <textarea id="voice" placeholder="Paste a few of your own captions here"></textarea>
+    </section>
+    <section>
+      <h2>Spending on this phone</h2>
+      <p class="hint" id="spendDetail"></p>
+      <button class="btn secondary" id="resetSpend">Reset counter</button>
+    </section>
+  </main>
+</div>
+
+<div class="overlay" id="busy">
+  <div class="box">
+    <div class="spinner"></div>
+    <div id="busyMsg">Working…</div>
+    <div class="bar"><i id="busyBar"></i></div>
+    <button class="btn secondary" id="cancelBtn" style="margin-top:16px">Cancel</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ---------------- basics ---------------- */
+const $ = id => document.getElementById(id);
+const API_URL = "https://api.anthropic.com/v1/messages";
+const API_VERSION = "2026-10-21";
+const PRICES = { // USD per million tokens [input, output]
+  "claude-sonnet-5-5": [2, 10],
+  "claude-opus-5-5": [4, 20],
+  "claude-haiku-5-5": [0.10, 0.50]
+};
+const MAX_PHOTOS = 150, BATCH = 30, THUMB = 512, FINAL_EDGE = 1024, EDIT_EDGE = 1568, PREVIEW_EDGE = 1400;
+
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem("tp." + k); return v === null ? d : v; }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem("tp." + k, v); }catch(e){} },
+  del(k){ try{ localStorage.removeItem("tp." + k); }catch(e){} }
+};
+
+const S = {
+  photos: [],        // {id, file, thumb, b64, w, h, score, note, issues, similar}
+  finalists: [], whyById: {}, chosen: null,
+  full: null, fullW: 0, fullH: 0, prevSrc: null,
+  claude: null,      // edit params from Claude
+  p: null,           // current edit params
+  base: null,        // {cx, cy, crop, ratio}
+  captions: [], capIdx: 0, tags: [], tagOn: [],
+  exportFile: null, exportUrl: null, abort: null
+};
+
+function toast(msg, ms){ const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), ms || 2600); }
+function busy(on, msg, pct){
+  $("busy").classList.toggle("show", !!on);
+  if (msg) $("busyMsg").textContent = msg;
+  $("busyBar").style.width = (pct == null ? 0 : Math.round(pct * 100)) + "%";
+}
+function show(id, on){ $(id).classList.toggle("hidden", !on); }
+function clamp(v, a, b){ return Math.min(b, Math.max(a, v)); }
+function num(v, d){ v = Number(v); return isFinite(v) ? v : d; }
+function noDashes(s){ return String(s || "").replace(/\s*[—–]\s*/g, ", ").replace(/,\s*,/g, ",").trim(); }
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c])); }
+
+/* ---------------- spending ---------------- */
+function addUsage(model, usage){
+  if (!usage) return;
+  const [pi, po] = PRICES[model] || [2, 10];
+  const inTok = (usage.input_tokens || 0) + (usage.cache_creation_input_tokens || 0) * 1.25 + (usage.cache_read_input_tokens || 0) * 0.1;
+  const outTok = usage.output_tokens || 0;
+  const cost = inTok / 1e6 * pi + outTok / 1e6 * po;
+  const total = num(store.get("spend", 0), 0) + cost;
+  store.set("spend", total.toFixed(6));
+  store.set("tokIn", num(store.get("tokIn", 0), 0) + Math.round(inTok));
+  store.set("tokOut", num(store.get("tokOut", 0), 0) + outTok);
+  renderSpend();
+}
+function renderSpend(){
+  const total = num(store.get("spend", 0), 0);
+  $("costLabel").textContent = "$" + (total < 10 ? total.toFixed(2) : total.toFixed(0)) + " used";
+  $("spendDetail").textContent = "About $" + total.toFixed(3) + " so far (" +
+    num(store.get("tokIn", 0), 0).toLocaleString() + " tokens in, " + num(store.get("tokOut", 0), 0).toLocaleString() +
+    " out). This is an estimate; your Claude Console shows the exact amount.";
+}
+
+/* ---------------- Claude API ---------------- */
+async function callClaude({ system, content, schema, effort, maxTokens }){
+  const key = store.get("key", "");
+  if (!key) { openSettings(); throw new Error("Add your API key first."); }
+  const model = store.get("model", "claude-sonnet-5-5");
+  const body = {
+    model, max_tokens: maxTokens || 16000, system,
+    messages: [{ role: "user", content }],
+    output_config: { format: { type: "json_schema", schema } }
+  };
+  if (effort) body.output_config.effort = effort;
+  let version = API_VERSION, plainJson = false;
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+    S.abort = new AbortController();
+    let res;
+    try {
+      res = await fetch(API_URL, {
+        method: "POST", signal: S.abort.signal,
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": key,
+          "anthropic-version": version,
+          "anthropic-dangerous-direct-browser-access": "true"
+        },
+        body: JSON.stringify(body)
+      });
+    } catch (e) {
+      if (e.name === "AbortError") throw new Error("Cancelled.");
+      if (attempt < 2) { await sleep(1500); continue; }
+      throw new Error("Couldn't reach Claude. Check your connection and try again.");
+    }
+    let data = null; try { data = await res.json(); } catch (e) {}
+    const msg = (data && data.error && data.error.message) || ("HTTP " + res.status);
+
+    if (res.ok) {
+      addUsage(model, data.usage);
+      if (data.stop_reason === "refusal") throw new Error("Claude declined to answer for this request.");
+      if (data.stop_reason === "max_tokens") throw new Error("Claude ran out of room. Try fewer photos at once.");
+      const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+      return parseJson(text);
+    }
+    if (res.status === 401) throw new Error("Your API key was rejected. Check it in Settings.");
+    if (res.status === 403) throw new Error("This API key isn't allowed to do that: " + msg);
+    if (res.status === 400) {
+      if (/effort/i.test(msg) && body.output_config && body.output_config.effort) { delete body.output_config.effort; continue; }
+      if (/anthropic-version|version/i.test(msg) && version !== "2023-06-01") { version = "2023-06-01"; continue; }
+      if (!plainJson && /output_config|format|schema|json/i.test(msg)) {
+        plainJson = true; delete body.output_config;
+        body.system = system + "\n\nReply with ONLY a JSON object (no other text) that matches this JSON schema:\n" + JSON.stringify(schema);
+        continue;
+      }
+      if (/credit|balance|billing/i.test(msg)) throw new Error("Your API account is out of credits: " + msg);
+      throw new Error("Claude API error: " + msg);
+    }
+    if (res.status === 429 || res.status === 529 || res.status >= 500) {
+      if (attempt < 5) { busy(true, "Claude is busy, retrying…"); await sleep(2000 * Math.pow(2, attempt)); continue; }
+      throw new Error("Claude is busy right now. Try again in a minute.");
+    }
+    throw new Error("Claude API error: " + msg);
+  }
+  throw new Error("Claude didn't respond. Try again.");
+}
+function parseJson(text){
+  try { return JSON.parse(text); } catch (e) {}
+  const a = text.indexOf("{"), b = text.lastIndexOf("}");
+  if (a >= 0 && b > a) { try { return JSON.parse(text.slice(a, b + 1)); } catch (e) {} }
+  throw new Error("Claude's answer couldn't be read. Try again.");
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+/* ---------------- images ---------------- */
+async function decodeFile(file){
+  const url = URL.createObjectURL(file);
+  const img = new Image(); img.decoding = "async"; img.src = url;
+  try { await img.decode(); } catch (e) { URL.revokeObjectURL(url); throw new Error("Can't open " + (file.name || "this photo")); }
+  return { img, url, w: img.naturalWidth, h: img.naturalHeight };
+}
+function scaledCanvas(src, w, h, maxEdge){
+  const s = Math.min(1, maxEdge / Math.max(w, h));
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(w * s)); c.height = Math.max(1, Math.round(h * s));
+  const x = c.getContext("2d"); x.imageSmoothingQuality = "high";
+  x.drawImage(src, 0, 0, c.width, c.height);
+  return c;
+}
+function freeCanvas(c){ if (c) { c.width = 0; c.height = 0; } }
+async function jpegB64(file, maxEdge){
+  const d = await decodeFile(file);
+  const c = scaledCanvas(d.img, d.w, d.h, maxEdge);
+  const url = c.toDataURL("image/jpeg", 0.85);
+  freeCanvas(c); URL.revokeObjectURL(d.url);
+  return { dataUrl: url, b64: url.split(",")[1], w: d.w, h: d.h };
+}
+
+/* ---------------- step 1: picking ---------------- */
+$("fileInput").addEventListener("change", async e => {
+  let files = Array.from(e.target.files || []).filter(f => !f.type || f.type.startsWith("image/"));
+  e.target.value = "";
+  if (!files.length) return;
+  if (files.length > MAX_PHOTOS) { toast("Using the first " + MAX_PHOTOS + " photos."); files = files.slice(0, MAX_PHOTOS); }
+  resetAfter(1);
+  S.photos = [];
+  $("thumbGrid").innerHTML = "";
+  busy(true, "Getting your photos ready…", 0);
+  $("cancelBtn").classList.add("hidden");
+  let skipped = 0;
+  for (let i = 0; i < files.length; i++) {
+    busy(true, "Getting your photos ready… " + (i + 1) + " of " + files.length, (i + 1) / files.length);
+    try {
+      const t = await jpegB64(files[i], THUMB);
+      const p = { id: S.photos.length + 1, file: files[i], thumb: t.dataUrl, b64: t.b64, w: t.w, h: t.h };
+      S.photos.push(p);
+      const cell = document.createElement("div"); cell.className = "cell"; cell.id = "cell" + p.id;
+      cell.innerHTML = '<img alt="" src="' + p.thumb + '">';
+      $("thumbGrid").appendChild(cell);
+    } catch (err) { skipped++; }
+  }
+  $("cancelBtn").classList.remove("hidden");
+  busy(false);
+  $("pickInfo").textContent = S.photos.length + " photo" + (S.photos.length === 1 ? "" : "s") + " ready" +
+    (skipped ? " (" + skipped + " couldn't be opened)" : "") + ".";
+  $("pickLabel").textContent = "Choose different photos";
+  $("rankBtn").disabled = S.photos.length < 1;
+  $("rankEstimate").textContent = estimateText();
+});
+
+function estimateText(){
+  const n = S.photos.length; if (!n) return "";
+  const [pi, po] = PRICES[store.get("model", "claude-sonnet-5-5")] || [2, 10];
+  const batches = Math.ceil(n / BATCH);
+  const inTok = n * 290 + batches * 900 + 8 * 1100 + 1200 + 2600 + 1500;
+  const outTok = n * 45 + batches * 1500 + 2500 + 4000;
+  const cost = inTok / 1e6 * pi + outTok / 1e6 * po;
+  return "Estimated cost for picking and editing: about $" + Math.max(0.01, cost).toFixed(2);
+}
+
+const RANK_SCHEMA = {
+  type: "object", additionalProperties: false, required: ["photos"],
+  properties: { photos: { type: "array", items: {
+    type: "object", additionalProperties: false,
+    required: ["id", "score", "note", "issues", "similar_to"],
+    properties: {
+      id: { type: "integer" },
+      score: { type: "integer", description: "0 to 100" },
+      note: { type: "string", description: "12 words or fewer" },
+      issues: { type: "array", items: { type: "string" } },
+      similar_to: { type: "integer", description: "id of a better near-duplicate, or 0" }
+    } } } }
+};
+const FINAL_SCHEMA = {
+  type: "object", additionalProperties: false, required: ["best_id", "ranking"],
+  properties: {
+    best_id: { type: "integer" },
+    ranking: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "why"],
+      properties: { id: { type: "integer" }, why: { type: "string" } } } }
+  }
+};
+const DEST_NAMES = { instagram: "Instagram", facebook: "Facebook", other: "social media or a blog" };
+const STYLE_TEXT = {
+  natural: "Natural: true to how the scene looked, clean and believable.",
+  punchy: "A bit punchier: a little more contrast and color, still realistic.",
+  warm: "Warm and soft: gentle warmth, softer contrast, lifted shadows.",
+  moody: "Moody: deeper shadows, a bit less saturation, atmospheric but not muddy."
+};
+function contextLine(){
+  const notes = $("tripNotes").value.trim();
+  return "Posting to: " + DEST_NAMES[$("dest").value] + ". Trip notes from the photographer: " + (notes || "none") + ".";
+}
+
+$("rankBtn").addEventListener("click", async () => {
+  $("rankErr").textContent = "";
+  if (!store.get("key", "")) { openSettings(); return; }
+  resetAfter(1);
+  try {
+    const n = S.photos.length;
+    const batches = [];
+    for (let i = 0; i < n; i += BATCH) batches.push(S.photos.slice(i, i + BATCH));
+    const sys = "You are an experienced travel photo editor helping one person choose the best photos from their own trip to edit and post. Be honest, specific and consistent.";
+    for (let b = 0; b < batches.length; b++) {
+      busy(true, n === 1 ? "Looking at your photo…" : "Claude is scoring your photos… " + (b + 1) + " of " + batches.length, (b + 0.2) / (batches.length + 1));
+      const content = [{ type: "text", text:
+        contextLine() + "\n\nBelow are " + batches[b].length + " photos, each labeled with its id. Score every photo from 0 to 100 for how good it would be to post as one standout image. Weigh: sense of place and story, a real moment or emotion, light, composition, sharpness and focus, and whether it stands out. " +
+        "Edit potential counts: a photo that is a bit dark, flat or tilted and easy to fix with simple edits should only lose a few points. Blur, missed focus, motion smear, closed eyes, awkward faces, accidental shots, screenshots, documents and receipts should score low. " +
+        "When photos are near duplicates (bursts or the same scene), give the best one the higher score and set similar_to on the others to the id of that best one, otherwise similar_to is 0. " +
+        "note: 12 words or fewer, plain language, about this photo. issues: short words like blurry, tilted, dark, bright, cluttered, duplicate, or an empty list. Return every id exactly once." }];
+      for (const p of batches[b]) {
+        content.push({ type: "text", text: "Photo " + p.id });
+        content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: p.b64 } });
+      }
+      const out = await callClaude({ system: sys, content, schema: RANK_SCHEMA, effort: "low", maxTokens: 16000 });
+      for (const r of (out.photos || [])) {
+        const p = S.photos.find(x => x.id === num(r.id, -1));
+        if (!p) continue;
+        p.score = clamp(Math.round(num(r.score, 0)), 0, 100);
+        p.note = noDashes(r.note); p.issues = (r.issues || []).map(String); p.similar = num(r.similar_to, 0);
+      }
+    }
+    S.photos.forEach(p => { if (p.score == null) { p.score = 0; p.note = "Not scored"; } });
+
+    // finalists: best of each batch plus overall best, skipping near-duplicates
+    const ranked = S.photos.slice().sort((a, b) => b.score - a.score);
+    const picks = [];
+    for (const batch of batches) {
+      batch.slice().sort((a, b) => b.score - a.score).filter(p => !p.similar).slice(0, 3).forEach(p => picks.includes(p) || picks.push(p));
+    }
+    for (const p of ranked) { if (picks.length >= 8) break; if (!picks.includes(p) && !p.similar) picks.push(p); }
+    let finalists = picks.sort((a, b) => b.score - a.score).slice(0, 8);
+    if (finalists.length === 0) finalists = ranked.slice(0, Math.min(8, ranked.length));
+    S.whyById = {};
+
+    if (finalists.length > 1) {
+      busy(true, "Comparing the finalists…", batches.length / (batches.length + 1));
+      const content = [{ type: "text", text: contextLine() + "\n\nThese are the finalists from the trip. Pick the single best one to edit and post, then rank all of them, best first. why: one plain, specific sentence about that photo, 20 words or fewer." }];
+      for (const p of finalists) {
+        const big = await jpegB64(p.file, FINAL_EDGE);
+        content.push({ type: "text", text: "Photo " + p.id });
+        content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: big.b64 } });
+      }
+      const out = await callClaude({ system: sys, content, schema: FINAL_SCHEMA, maxTokens: 16000 });
+      const order = [];
+      (out.ranking || []).forEach(r => { const p = finalists.find(x => x.id === num(r.id, -1)); if (p && !order.includes(p)) { order.push(p); S.whyById[p.id] = noDashes(r.why); } });
+      finalists.forEach(p => order.includes(p) || order.push(p));
+      const best = finalists.find(x => x.id === num(out.best_id, -1)) || order[0];
+      S.finalists = [best].concat(order.filter(p => p !== best));
+    } else {
+      S.finalists = finalists;
+      S.whyById[finalists[0].id] = finalists[0].note;
+    }
+    busy(false);
+    renderResults();
+    choose(S.finalists[0]);
+    show("s2", true);
+    $("s2").scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (err) {
+    busy(false);
+    $("rankErr").textContent = err.message;
+  }
+});
+
+/* ---------------- step 2: results ---------------- */
+function renderResults(){
+  const strip = $("finalStrip"); strip.innerHTML = "";
+  S.finalists.forEach((p, i) => {
+    const d = document.createElement("div"); d.className = "f"; d.dataset.id = p.id;
+    d.innerHTML = '<img alt="" src="' + p.thumb + '"><small>' + (i === 0 ? "Claude's pick" : "#" + (i + 1)) + "</small>";
+    d.onclick = () => choose(p);
+    strip.appendChild(d);
+  });
+  const list = $("allList"); list.innerHTML = "";
+  S.photos.slice().sort((a, b) => b.score - a.score).forEach(p => {
+    const d = document.createElement("div"); d.className = "item";
+    d.innerHTML = '<img alt="" src="' + p.thumb + '"><div class="s">' + p.score + '</div><div><div>' + esc(p.note || "") +
+      '</div><div class="n">' + esc((p.issues || []).join(", ")) + (p.similar ? (p.issues && p.issues.length ? ", " : "") + "similar to a better one" : "") + "</div></div>";
+    d.onclick = () => { choose(p); $("s2").scrollIntoView({ behavior: "smooth" }); };
+    list.appendChild(d);
+  });
+  // badges in the grid
+  S.photos.forEach(p => {
+    const cell = $("cell" + p.id); if (!cell) return;
+    let b = cell.querySelector(".badge"); if (!b) { b = document.createElement("div"); b.className = "badge"; cell.appendChild(b); }
+    b.textContent = p.score; b.classList.toggle("top", S.finalists.includes(p));
+    cell.classList.toggle("dim", p.score < 40);
+  });
+}
+function choose(p){
+  S.chosen = p;
+  $("winnerImg").src = p.thumb;
+  const isPick = p === S.finalists[0];
+  $("winnerReason").textContent = (isPick ? "Claude's pick: " : "Your pick: ") + (S.whyById[p.id] || p.note || "");
+  document.querySelectorAll(".strip .f").forEach(el => el.classList.toggle("sel", +el.dataset.id === p.id));
+  document.querySelectorAll(".grid .cell").forEach(el => el.classList.toggle("sel", el.id === "cell" + p.id));
+  resetAfter(2);
+}
+
+/* ---------------- step 3: edit ---------------- */
+const SLIDERS = [
+  ["exposure", "Exposure", -1.5, 1.5, 0.05], ["contrast", "Contrast", -100, 100, 1],
+  ["highlights", "Highlights", -100, 100, 1], ["shadows", "Shadows", -100, 100, 1],
+  ["warmth", "Warmth", -100, 100, 1], ["tint", "Tint", -100, 100, 1],
+  ["vibrance", "Vibrance", -100, 100, 1], ["saturation", "Saturation", -100, 100, 1],
+  ["vignette", "Vignette", 0, 100, 1], ["straighten", "Straighten", -15, 15, 0.1]
+];
+const ASPECTS = [["claude", "Claude's crop"], ["original", "Original"], ["4:5", "4:5"], ["1:1", "1:1"], ["3:2", "3:2"], ["16:9", "16:9"], ["9:16", "9:16"]];
+const EDIT_SCHEMA = {
+  type: "object", additionalProperties: false,
+  required: ["straighten", "crop", "aspect", "exposure", "contrast", "highlights", "shadows", "warmth", "tint", "vibrance", "saturation", "vignette", "notes", "captions", "hashtags", "alt_text"],
+  properties: {
+    straighten: { type: "number", description: "degrees, positive rotates clockwise" },
+    crop: { type: "object", additionalProperties: false, required: ["x", "y", "w", "h"],
+      properties: { x: { type: "number" }, y: { type: "number" }, w: { type: "number" }, h: { type: "number" } } },
+    aspect: { type: "string", enum: ["original", "4:5", "1:1", "3:2", "16:9", "9:16"] },
+    exposure: { type: "number" }, contrast: { type: "integer" }, highlights: { type: "integer" }, shadows: { type: "integer" },
+    warmth: { type: "integer" }, tint: { type: "integer" }, vibrance: { type: "integer" }, saturation: { type: "integer" },
+    vignette: { type: "integer" },
+    notes: { type: "array", items: { type: "string" } },
+    captions: { type: "array", items: { type: "object", additionalProperties: false, required: ["label", "text"],
+      properties: { label: { type: "string" }, text: { type: "string" } } } },
+    hashtags: { type: "array", items: { type: "string" } },
+    alt_text: { type: "string" }
+  }
+};
+
+function buildSliders(){
+  const box = $("sliders"); box.innerHTML = "";
+  for (const [k, label, mn, mx, st] of SLIDERS) {
+    const d = document.createElement("div"); d.className = "slider";
+    d.innerHTML = '<div class="top"><span>' + label + '</span><span id="v_' + k + '"></span></div>' +
+      '<input type="range" id="r_' + k + '" min="' + mn + '" max="' + mx + '" step="' + st + '">';
+    box.appendChild(d);
+    d.querySelector("input").addEventListener("input", ev => { S.p[k] = num(ev.target.value, 0); syncLabels(); schedule(); });
+  }
+  const chips = $("aspectChips"); chips.innerHTML = "";
+  for (const [k, label] of ASPECTS) {
+    const b = document.createElement("button"); b.className = "chip"; b.textContent = label; b.dataset.k = k;
+    b.onclick = () => { S.p.aspect = k; syncControls(); schedule(); };
+    chips.appendChild(b);
+  }
+  $("zoom").addEventListener("input", ev => { S.p.zoom = num(ev.target.value, 1); syncLabels(); schedule(); });
+}
+function syncControls(){
+  for (const [k] of SLIDERS) $("r_" + k).value = S.p[k];
+  $("zoom").value = S.p.zoom;
+  document.querySelectorAll("#aspectChips .chip").forEach(c => c.classList.toggle("on", c.dataset.k === S.p.aspect));
+  syncLabels();
+}
+function syncLabels(){
+  for (const [k] of SLIDERS) {
+    const v = S.p[k];
+    $("v_" + k).textContent = k === "exposure" ? (v > 0 ? "+" : "") + v.toFixed(2) : k === "straighten" ? v.toFixed(1) + "°" : (v > 0 ? "+" : "") + Math.round(v);
+  }
+  $("v_zoom").textContent = Math.round(S.p.zoom * 100) + "%";
+}
+
+function sanitizeEdit(e){
+  const c = e.crop || {};
+  let x = clamp(num(c.x, 0), 0, 0.9), y = clamp(num(c.y, 0), 0, 0.9);
+  let w = clamp(num(c.w, 1), 0.25, 1), h = clamp(num(c.h, 1), 0.25, 1);
+  if (x + w > 1) w = 1 - x; if (y + h > 1) h = 1 - y;
+  const asp = ASPECTS.some(a => a[0] === e.aspect) ? e.aspect : "original";
+  return {
+    straighten: clamp(num(e.straighten, 0), -15, 15), crop: { x, y, w, h }, claudeAspect: asp,
+    exposure: clamp(num(e.exposure, 0), -1.5, 1.5),
+    contrast: clamp(Math.round(num(e.contrast, 0)), -100, 100), highlights: clamp(Math.round(num(e.highlights, 0)), -100, 100),
+    shadows: clamp(Math.round(num(e.shadows, 0)), -100, 100), warmth: clamp(Math.round(num(e.warmth, 0)), -100, 100),
+    tint: clamp(Math.round(num(e.tint, 0)), -100, 100), vibrance: clamp(Math.round(num(e.vibrance, 0)), -100, 100),
+    saturation: clamp(Math.round(num(e.saturation, 0)), -100, 100), vignette: clamp(Math.round(num(e.vignette, 0)), 0, 100),
+    aspect: "claude", zoom: 1
+  };
+}
+function noEdit(){
+  return { straighten: 0, crop: { x: 0, y: 0, w: 1, h: 1 }, claudeAspect: "original", exposure: 0, contrast: 0, highlights: 0, shadows: 0,
+    warmth: 0, tint: 0, vibrance: 0, saturation: 0, vignette: 0, aspect: "original", zoom: 1 };
+}
+
+$("editBtn").addEventListener("click", () => runEdit($("style").value));
+$("redoEdit").addEventListener("click", () => runEdit($("style2").value));
+
+async function runEdit(style){
+  $("editErr").textContent = "";
+  const p = S.chosen; if (!p) return;
+  try {
+    busy(true, "Opening the full photo…", 0.1);
+    if (!S.full || S.full.pid !== p.id) {
+      if (S.full) { URL.revokeObjectURL(S.full.url); freeCanvas(S.prevSrc); }
+      const d = await decodeFile(p.file);
+      S.full = { pid: p.id, img: d.img, url: d.url }; S.fullW = d.w; S.fullH = d.h;
+      S.prevSrc = scaledCanvas(d.img, d.w, d.h, PREVIEW_EDGE);
+    }
+    const c = scaledCanvas(S.full.img, S.fullW, S.fullH, EDIT_EDGE);
+    const b64 = c.toDataURL("image/jpeg", 0.88).split(",")[1]; freeCanvas(c);
+    busy(true, "Claude is planning the edit and writing captions…", 0.45);
+    const voice = store.get("voice", "").trim();
+    const prompt = contextLine() + "\nEdit style: " + STYLE_TEXT[style] + "\n\n" +
+      "Give settings for a simple photo editor. It applies, in order: straighten (rotates and fills the frame), crop, white balance, exposure, shadows, highlights, contrast, vibrance, saturation, vignette.\n" +
+      "- straighten: degrees, positive rotates clockwise. Only use it when a horizon or a clear vertical is visibly tilted; otherwise 0.\n" +
+      "- crop: fractions of the straightened frame. x and y are the top-left corner, w and h the size. The full frame is x 0, y 0, w 1, h 1. Crop to strengthen the composition or trim edge distractions, never tighter than needed.\n" +
+      "- aspect: the shape of your crop. " + ($("dest").value === "instagram" ? "For Instagram, prefer 4:5 or 1:1 when the subject fits, otherwise keep the original shape. " : "Keep the original shape unless another clearly helps. ") + "Your crop box should match this aspect in pixels.\n" +
+      "- exposure: stops from -1.5 to 1.5. contrast, highlights, shadows, warmth, tint, vibrance, saturation: -100 to 100, where 0 is no change. Negative highlights pull bright areas down, positive shadows lift dark areas. Positive warmth is more yellow, positive tint is more magenta. vignette: 0 to 100.\n" +
+      "Most good photos need small moves: exposure within about 0.4 and the rest within about 30. Keep skin tones and colors believable.\n" +
+      "- notes: 2 to 5 short plain sentences saying what you changed and why.\n\n" +
+      "Then write captions as the person who took the photo, posting about their own trip. Write 3 options labeled Short, A bit more, and Story (Story is 2 to 4 sentences). " +
+      "Rules: first person, plain everyday words, warm and specific, a little understated. No hype or travel-brochure words (no breathtaking, stunning, paradise, hidden gem, unforgettable, wanderlust, magical). Never use em dashes or en dashes. At most one emoji, and only if it fits. Don't invent facts you can't see or that aren't in the trip notes; if you don't know the place name, don't guess one.\n" +
+      (voice ? "Match how this person writes. Examples of their own captions:\n\"\"\"\n" + voice.slice(0, 2500) + "\n\"\"\"\n" : "") +
+      "- hashtags: 5 to 8 relevant ones, each starting with #.\n- alt_text: one sentence describing the photo for people using screen readers.";
+    const content = [{ type: "text", text: prompt }, { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } }];
+    const out = await callClaude({
+      system: "You are a skilled photo retoucher and a good writer who helps one person edit and post their own travel photos.",
+      content, schema: EDIT_SCHEMA, maxTokens: 16000
+    });
+    S.claude = sanitizeEdit(out);
+    S.p = JSON.parse(JSON.stringify(S.claude));
+    S.capIdx = 0; delete $("capText").dataset.touched;
+    invalidateExport();
+    $("editNotes").innerHTML = (out.notes || []).slice(0, 6).map(n => "<li>" + esc(noDashes(n)) + "</li>").join("");
+    S.captions = (out.captions || []).filter(c => c && c.text).map(c => ({ label: noDashes(c.label || ""), text: noDashes(c.text) }));
+    S.tags = (out.hashtags || []).map(t => "#" + String(t).replace(/^#+/, "").replace(/\s+/g, "")).filter(t => t.length > 1).slice(0, 10);
+    S.tagOn = S.tags.map(() => true);
+    $("altText").value = noDashes(out.alt_text || "");
+    $("style2").value = style;
+    busy(false);
+    if (!$("sliders").children.length) buildSliders();
+    syncControls();
+    show("s3", true);
+    renderPreview();
+    renderCaptions();
+    $("s3").scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (err) {
+    busy(false);
+    $("editErr").textContent = err.message;
+    if (!$("s3").classList.contains("hidden")) toast(err.message, 4000);
+  }
+}
+
+$("resetClaude").onclick = () => { if (!S.claude) return; S.p = JSON.parse(JSON.stringify(S.claude)); syncControls(); schedule(); };
+$("resetNone").onclick = () => { S.p = noEdit(); syncControls(); schedule(); };
+
+/* geometry: straighten + crop, in a frame the size of the source */
+function ratioOf(a, W, H){
+  if (a === "original") return W / H;
+  const m = /^(\d+):(\d+)$/.exec(a); return m ? (+m[1]) / (+m[2]) : W / H;
+}
+function cropFor(p, W, H){
+  const base = p.crop || { x: 0, y: 0, w: 1, h: 1 };
+  const cx = (base.x + base.w / 2) * W, cy = (base.y + base.h / 2) * H;
+  let cw, ch;
+  if (p.aspect === "claude") {
+    cw = base.w * W; ch = base.h * H;
+    if (p.claudeAspect && p.claudeAspect !== "original") {
+      const r = ratioOf(p.claudeAspect, W, H);
+      if (cw / ch > r) cw = ch * r; else ch = cw / r;
+    }
+  } else {
+    const r = ratioOf(p.aspect, W, H);
+    if (W / H > r) { ch = H; cw = H * r; } else { cw = W; ch = W / r; }
+  }
+  cw /= p.zoom; ch /= p.zoom;
+  cw = Math.min(cw, W); ch = Math.min(ch, H);
+  const x = clamp(cx - cw / 2, 0, W - cw), y = clamp(cy - ch / 2, 0, H - ch);
+  return { x, y, w: cw, h: ch };
+}
+function renderGeometry(src, W, H, p, maxEdge, noUpscale){
+  const crop = cropFor(p, W, H);
+  const s = Math.min(maxEdge / Math.max(crop.w, crop.h), Math.sqrt(16e6 / (crop.w * crop.h)), noUpscale ? 1 : 1e9);
+  const out = document.createElement("canvas");
+  out.width = Math.max(1, Math.round(crop.w * s)); out.height = Math.max(1, Math.round(crop.h * s));
+  const ctx = out.getContext("2d");
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+  const th = p.straighten * Math.PI / 180, ac = Math.abs(Math.cos(th)), as = Math.abs(Math.sin(th));
+  const k = Math.max((W * ac + H * as) / W, (W * as + H * ac) / H);
+  ctx.setTransform(s, 0, 0, s, -crop.x * s, -crop.y * s);
+  ctx.translate(W / 2, H / 2); ctx.rotate(th); ctx.scale(k, k); ctx.translate(-W / 2, -H / 2);
+  ctx.drawImage(src, 0, 0, W, H);
+  return out;
+}
+
+/* tone and color */
+const toLin = v => v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+const toSrgb = v => v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
+function buildLuts(p){
+  const G = Math.pow(2, p.exposure), t = p.warmth / 100, m = p.tint / 100;
+  let gr = 1 + 0.16 * t + 0.05 * m, gg = 1 - 0.10 * m, gb = 1 - 0.16 * t + 0.05 * m;
+  const norm = 0.2126 * gr + 0.7152 * gg + 0.0722 * gb; gr /= norm; gg /= norm; gb /= norm;
+  const sh = p.shadows / 100 * 0.9, hl = p.highlights / 100 * 0.9, c = p.contrast / 100;
+  return [gr, gg, gb].map(gain => {
+    const lut = new Uint8ClampedArray(256);
+    for (let v = 0; v < 256; v++) {
+      let lin = toLin(v / 255) * gain;
+      lin = G >= 1 ? G * lin / (1 + (G - 1) * lin) : lin * G;
+      let x = toSrgb(clamp(lin, 0, 1));
+      x = x + sh * x * (1 - x) * (1 - x);
+      x = x + hl * x * x * (1 - x);
+      if (c >= 0) { const sm = x * x * (3 - 2 * x); x = x + (sm - x) * c * 0.9; }
+      else x = 0.5 + (x - 0.5) * (1 + c * 0.5);
+      lut[v] = Math.round(clamp(x, 0, 1) * 255);
+    }
+    return lut;
+  });
+}
+function applyTone(canvas, p){
+  const w = canvas.width, h = canvas.height, ctx = canvas.getContext("2d");
+  const im = ctx.getImageData(0, 0, w, h), d = im.data;
+  const [lr, lg, lb] = buildLuts(p);
+  const S1 = 1 + p.saturation / 100, V = p.vibrance / 100, vig = p.vignette / 100 * 0.55;
+  const doColor = S1 !== 1 || V !== 0;
+  let dx2 = null, dy2 = null;
+  if (vig > 0) {
+    dx2 = new Float32Array(w); dy2 = new Float32Array(h);
+    for (let x = 0; x < w; x++) { const u = (x + 0.5) / w * 2 - 1; dx2[x] = u * u / 2; }
+    for (let y = 0; y < h; y++) { const u = (y + 0.5) / h * 2 - 1; dy2[y] = u * u / 2; }
+  }
+  let i = 0;
+  for (let y = 0; y < h; y++) {
+    const ry = vig > 0 ? dy2[y] : 0;
+    for (let x = 0; x < w; x++, i += 4) {
+      let r = lr[d[i]], g = lg[d[i + 1]], b = lb[d[i + 2]];
+      if (doColor) {
+        const L = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        const mx = r > g ? (r > b ? r : b) : (g > b ? g : b), mn = r < g ? (r < b ? r : b) : (g < b ? g : b);
+        const k = S1 * (1 + V * (1 - (mx - mn) / 255));
+        r = L + (r - L) * k; g = L + (g - L) * k; b = L + (b - L) * k;
+      }
+      if (vig > 0) { const r2 = dx2[x] + ry, f = 1 - vig * r2 * r2; r *= f; g *= f; b *= f; }
+      d[i] = r; d[i + 1] = g; d[i + 2] = b;
+    }
+  }
+  ctx.putImageData(im, 0, 0);
+  return canvas;
+}
+
+/* preview */
+let raf = 0, holding = false;
+function schedule(){ invalidateExport(); if (raf) return; raf = requestAnimationFrame(() => { raf = 0; renderPreview(); }); }
+function renderPreview(){
+  if (!S.prevSrc || !S.p) return;
+  const cv = $("preview");
+  let out;
+  if (holding) out = scaledCanvas(S.prevSrc, S.prevSrc.width, S.prevSrc.height, 1100);
+  else { out = renderGeometry(S.prevSrc, S.prevSrc.width, S.prevSrc.height, S.p, 1100); applyTone(out, S.p); }
+  cv.width = out.width; cv.height = out.height;
+  cv.getContext("2d").drawImage(out, 0, 0);
+  freeCanvas(out);
+}
+const pw = $("previewWrap");
+pw.addEventListener("pointerdown", e => { holding = true; renderPreview(); });
+["pointerup", "pointercancel", "pointerleave"].forEach(ev => pw.addEventListener(ev, () => { if (holding) { holding = false; renderPreview(); } }));
+pw.addEventListener("contextmenu", e => e.preventDefault());
+
+/* ---------------- step 4: caption and post ---------------- */
+function renderCaptions(){
+  const box = $("capList"); box.innerHTML = "";
+  S.captions.forEach((c, i) => {
+    const d = document.createElement("div"); d.className = "cap" + (i === S.capIdx ? " on" : "");
+    d.innerHTML = "<b>" + esc(c.label || "Option " + (i + 1)) + "</b>" + esc(c.text);
+    d.onclick = () => { S.capIdx = i; $("capText").value = c.text; renderCaptions(); };
+    box.appendChild(d);
+  });
+  if (S.captions[S.capIdx] && !$("capText").dataset.touched) $("capText").value = S.captions[S.capIdx].text;
+  const tc = $("tagChips"); tc.innerHTML = "";
+  S.tags.forEach((t, i) => {
+    const b = document.createElement("button"); b.className = "chip" + (S.tagOn[i] ? " on" : ""); b.textContent = t;
+    b.onclick = () => { S.tagOn[i] = !S.tagOn[i]; renderCaptions(); };
+    tc.appendChild(b);
+  });
+}
+$("capText").addEventListener("input", () => { $("capText").dataset.touched = "1"; });
+function fullCaption(){
+  const tags = S.tags.filter((t, i) => S.tagOn[i]).join(" ");
+  return noDashes($("capText").value).trim() + (tags ? "\n\n" + tags : "");
+}
+
+$("toPost").addEventListener("click", () => { show("s4", true); renderCaptions(); prepareExport(); $("s4").scrollIntoView({ behavior: "smooth", block: "start" }); });
+$("exportSize").addEventListener("change", () => { invalidateExport(); prepareExport(); });
+
+function invalidateExport(){
+  S.exportFile = null;
+  if (S.exportUrl) { URL.revokeObjectURL(S.exportUrl); S.exportUrl = null; }
+  $("shareBtn").disabled = true; $("shareBtn").textContent = "Preparing photo…";
+  if (!$("s4").classList.contains("hidden")) { clearTimeout(invalidateExport._t); invalidateExport._t = setTimeout(prepareExport, 600); }
+}
+let exporting = 0;
+async function prepareExport(){
+  if (!S.full || !S.p) return;
+  const job = ++exporting;
+  $("shareBtn").disabled = true; $("shareBtn").textContent = "Preparing photo…";
+  await sleep(30);
+  try {
+    const edge = num($("exportSize").value, 4096);
+    const out = renderGeometry(S.full.img, S.fullW, S.fullH, S.p, edge, true);
+    applyTone(out, S.p);
+    const blob = await new Promise((res, rej) => out.toBlob(b => b ? res(b) : rej(new Error("Couldn't save the photo")), "image/jpeg", 0.92));
+    const w = out.width, h = out.height; freeCanvas(out);
+    if (job !== exporting) return;
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "");
+    S.exportFile = new File([blob], "trip-pick-" + stamp + ".jpg", { type: "image/jpeg" });
+    S.exportUrl = URL.createObjectURL(blob);
+    $("dlLink").href = S.exportUrl; $("dlLink").download = S.exportFile.name;
+    $("exportInfo").textContent = w + " × " + h + " px, " + (blob.size >= 1e6 ? (blob.size / 1e6).toFixed(1) + " MB" : Math.max(1, Math.round(blob.size / 1e3)) + " KB") + ", JPEG.";
+    $("shareBtn").disabled = false; $("shareBtn").textContent = "Share / Post";
+    saveLast(S.exportFile, fullCaption());
+  } catch (err) {
+    $("shareBtn").textContent = "Couldn't prepare photo"; toast(err.message, 4000);
+  }
+}
+function copyText(text){
+  try { if (navigator.clipboard && navigator.clipboard.writeText) { return navigator.clipboard.writeText(text).then(() => true, () => fallbackCopy(text)); } } catch (e) {}
+  return Promise.resolve(fallbackCopy(text));
+}
+function fallbackCopy(text){
+  const ta = document.createElement("textarea"); ta.value = text; ta.setAttribute("readonly", "");
+  ta.style.position = "fixed"; ta.style.opacity = "0"; document.body.appendChild(ta); ta.select();
+  let ok = false; try { ok = document.execCommand("copy"); } catch (e) {} ta.remove(); return ok;
+}
+function shareFile(file, caption){
+  copyText(caption);
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    navigator.share({ files: [file] }).then(() => toast("Shared. Your caption is copied, paste it in.")).catch(e => {
+      if (e && e.name !== "AbortError") toast("Sharing didn't work here. Use Save file instead.", 4000);
+    });
+    toast("Caption copied");
+  } else {
+    toast("This browser can't share files. Use Save file instead.", 4000);
+  }
+}
+$("shareBtn").addEventListener("click", () => { if (S.exportFile) shareFile(S.exportFile, fullCaption()); });
+$("copyCap").addEventListener("click", () => { copyText(fullCaption()).then(ok => toast(ok === false ? "Couldn't copy" : "Caption copied")); saveLast(S.exportFile, fullCaption()); });
+$("dlLink").addEventListener("click", e => { if (!S.exportUrl) { e.preventDefault(); toast("Still preparing the photo…"); } });
+$("copyAlt").addEventListener("click", () => copyText($("altText").value).then(ok => toast(ok === false ? "Couldn't copy" : "Alt text copied")));
+$("startOver").addEventListener("click", () => { resetAfter(1); S.photos = []; $("thumbGrid").innerHTML = ""; $("pickInfo").textContent = "";
+  $("pickLabel").textContent = "Choose photos"; $("rankBtn").disabled = true; $("rankEstimate").textContent = ""; window.scrollTo({ top: 0, behavior: "smooth" }); });
+
+function resetAfter(step){
+  if (step <= 1) { show("s2", false); S.finalists = []; S.chosen = null; }
+  if (step <= 2) {
+    show("s3", false); show("s4", false); S.claude = null; S.p = null; S.captions = []; S.capIdx = 0; S.tags = []; S.tagOn = [];
+    $("capText").value = ""; delete $("capText").dataset.touched; $("altText").value = ""; $("editErr").textContent = "";
+    S.exportFile = null; if (S.exportUrl) { URL.revokeObjectURL(S.exportUrl); S.exportUrl = null; }
+  }
+}
+
+/* ---------------- last post, kept on the phone ---------------- */
+function idb(){ return new Promise((res, rej) => { try { const r = indexedDB.open("trip-pick", 1);
+  r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); } catch (e) { rej(e); } }); }
+async function saveLast(file, caption){
+  if (!file) return;
+  try { const db = await idb(); const tx = db.transaction("kv", "readwrite");
+    tx.objectStore("kv").put({ blob: file, name: file.name, caption, at: Date.now() }, "last"); } catch (e) {}
+}
+async function loadLast(){
+  try { const db = await idb(); return await new Promise(res => { const r = db.transaction("kv").objectStore("kv").get("last");
+    r.onsuccess = () => res(r.result || null); r.onerror = () => res(null); }); } catch (e) { return null; }
+}
+async function clearLast(){ try { const db = await idb(); db.transaction("kv", "readwrite").objectStore("kv").delete("last"); } catch (e) {} show("lastPost", false); }
+let LAST = null;
+$("lastShare").onclick = () => { if (LAST) shareFile(new File([LAST.blob], LAST.name || "trip-pick.jpg", { type: "image/jpeg" }), LAST.caption || ""); };
+$("lastCopy").onclick = () => { if (LAST) copyText(LAST.caption || "").then(() => toast("Caption copied")); };
+$("lastClear").onclick = clearLast;
+
+/* ---------------- settings ---------------- */
+function openSettings(){
+  $("apiKey").value = store.get("key", ""); $("model").value = store.get("model", "claude-sonnet-5-5");
+  $("voice").value = store.get("voice", ""); $("keyMsg").innerHTML = ""; renderSpend();
+  $("settings").classList.add("show");
+}
+function closeSettings(){
+  store.set("model", $("model").value); store.set("voice", $("voice").value);
+  $("settings").classList.remove("show"); refreshKeyBanner(); $("rankEstimate").textContent = estimateText();
+}
+function refreshKeyBanner(){ show("needKey", !store.get("key", "")); }
+$("openSettings").onclick = openSettings; $("needKeyBtn").onclick = openSettings; $("closeSettings").onclick = closeSettings;
+$("model").onchange = () => store.set("model", $("model").value);
+$("voice").onchange = () => store.set("voice", $("voice").value);
+$("forgetKey").onclick = () => { store.del("key"); $("apiKey").value = ""; $("keyMsg").innerHTML = '<div class="ok">Key removed from this phone.</div>'; refreshKeyBanner(); };
+$("resetSpend").onclick = () => { store.set("spend", 0); store.set("tokIn", 0); store.set("tokOut", 0); renderSpend(); };
+$("saveKey").onclick = async () => {
+  const k = $("apiKey").value.trim();
+  if (!/^sk-ant-/.test(k)) { $("keyMsg").innerHTML = '<div class="err">That doesn\'t look like a Claude API key. It starts with sk-ant-</div>'; return; }
+  store.set("key", k); store.set("model", $("model").value);
+  $("keyMsg").innerHTML = '<div class="hint">Testing…</div>';
+  try {
+    const out = await callClaude({ system: "Reply with JSON only.", content: [{ type: "text", text: "Say ok." }],
+      schema: { type: "object", additionalProperties: false, required: ["ok"], properties: { ok: { type: "boolean" } } }, effort: "low", maxTokens: 2000 });
+    $("keyMsg").innerHTML = '<div class="ok">Key works. You\'re set.</div>';
+    refreshKeyBanner();
+  } catch (err) { $("keyMsg").innerHTML = '<div class="err">' + esc(err.message) + "</div>"; }
+};
+$("cancelBtn").onclick = () => { try { S.abort && S.abort.abort(); } catch (e) {} busy(false); };
+
+/* remember choices */
+["dest", "style"].forEach(id => { const v = store.get(id, ""); if (v) $(id).value = v; $(id).addEventListener("change", () => store.set(id, $(id).value)); });
+
+/* start */
+renderSpend(); refreshKeyBanner();
+loadLast().then(l => { if (l && l.blob) { LAST = l; show("lastPost", true); } });
+</script>
+</body>
+</html>
