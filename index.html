@@ -1217,7 +1217,12 @@ function openSettings(){
   $("voice").value = store.get("voice", ""); $("keyMsg").innerHTML = ""; renderSpend();
   $("settings").classList.add("show");
 }
+function keepKey(){
+  const k = $("apiKey").value.trim();
+  if (/^sk-ant-/.test(k)) { store.set("key", k); backupKey(k); }
+}
 function closeSettings(){
+  keepKey();
   store.set("model", $("model").value); store.set("voice", $("voice").value);
   $("settings").classList.remove("show"); refreshKeyBanner(); $("rankEstimate").textContent = estimateText();
 }
@@ -1225,12 +1230,12 @@ function refreshKeyBanner(){ show("needKey", !store.get("key", "")); }
 $("openSettings").onclick = openSettings; $("needKeyBtn").onclick = openSettings; $("closeSettings").onclick = closeSettings;
 $("model").onchange = () => store.set("model", $("model").value);
 $("voice").onchange = () => store.set("voice", $("voice").value);
-$("forgetKey").onclick = () => { store.del("key"); $("apiKey").value = ""; $("keyMsg").innerHTML = '<div class="ok">Key removed from this phone.</div>'; refreshKeyBanner(); };
+$("forgetKey").onclick = () => { store.del("key"); idb().then(db => db.transaction("kv", "readwrite").objectStore("kv").delete("key")).catch(() => {}); $("apiKey").value = ""; $("keyMsg").innerHTML = '<div class="ok">Key removed from this phone.</div>'; refreshKeyBanner(); };
 $("resetSpend").onclick = () => { store.set("spend", 0); store.set("tokIn", 0); store.set("tokOut", 0); renderSpend(); };
 $("saveKey").onclick = async () => {
   const k = $("apiKey").value.trim();
   if (!/^sk-ant-/.test(k)) { $("keyMsg").innerHTML = '<div class="err">That doesn\'t look like a Claude API key. It starts with sk-ant-</div>'; return; }
-  store.set("key", k); store.set("model", $("model").value);
+  store.set("key", k); backupKey(k); store.set("model", $("model").value);
   $("keyMsg").innerHTML = '<div class="hint">Testing…</div>';
   try {
     const out = await callClaude({ system: "Reply with JSON only.", content: [{ type: "text", text: "Say ok." }],
@@ -1245,6 +1250,21 @@ $("cancelBtn").onclick = () => { try { S.abort && S.abort.abort(); } catch (e) {
 ["dest", "style", "locInput"].forEach(id => { const v = store.get(id, ""); if (v) $(id).value = v; $(id).addEventListener("change", () => store.set(id, $(id).value)); });
 
 /* start */
+/* keep the key safe: save as soon as it's pasted, keep a second copy, and warn if this browser won't keep it */
+$("apiKey").addEventListener("input", keepKey);
+$("apiKey").addEventListener("change", keepKey);
+function backupKey(k){ idb().then(db => db.transaction("kv", "readwrite").objectStore("kv").put(k, "key")).catch(() => {}); }
+function storageWorks(){ try { localStorage.setItem("tp.t", "1"); const ok = localStorage.getItem("tp.t") === "1"; localStorage.removeItem("tp.t"); return ok; } catch (e) { return false; } }
+try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); } catch (e) {}
+if (!storageWorks()) {
+  const w = document.createElement("section");
+  w.innerHTML = '<h2>Settings won\'t be kept here</h2><p class="hint">This browser is blocking saved data, so your key is forgotten each time. Turn off Private Browsing, or in Settings, Apps, Safari, turn off Block All Cookies. Then open Trip Pick from your Home Screen icon.</p>';
+  document.querySelector("main").prepend(w);
+}
+if (!store.get("key", "")) {
+  idb().then(db => new Promise(res => { const r = db.transaction("kv").objectStore("kv").get("key"); r.onsuccess = () => res(r.result); r.onerror = () => res(null); }))
+    .then(k => { if (k && /^sk-ant-/.test(k)) { store.set("key", k); refreshKeyBanner(); } }).catch(() => {});
+} else backupKey(store.get("key", ""));
 renderSpend(); refreshKeyBanner();
 loadLast().then(l => { if (l && l.blob) { LAST = l; show("lastPost", true); } });
 </script>
