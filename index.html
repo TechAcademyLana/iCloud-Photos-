@@ -330,6 +330,7 @@ function show(id, on){ $(id).classList.toggle("hidden", !on); }
 function clamp(v, a, b){ return Math.min(b, Math.max(a, v)); }
 function num(v, d){ v = Number(v); return isFinite(v) ? v : d; }
 function noDashes(s){ return String(s || "").replace(/\s*[—–]\s*/g, ", ").replace(/,\s*,/g, ",").trim(); }
+function noEmoji(s){ try { return String(s).replace(/[\p{Extended_Pictographic}\u200D\uFE0F\u20E3]/gu, "").replace(/\s{2,}/g, " ").replace(/\s+([.,!])/g, "$1").trim(); } catch (e) { return s; } }
 function esc(s){ return String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c])); }
 
 /* ---------------- spending ---------------- */
@@ -737,7 +738,7 @@ function captionRules(voice){
   return "Then write 3 Instagram captions in the voice of a tasteful travel influencer with a quiet luxury feel: short, sweet, fun and a little flirty with life. " +
     "Think effortless, understated, soft-spoken confidence: slow mornings, golden light, good taste, never trying too hard and never loud. " +
     "Each caption is ONE short line, 3 to 10 words. Lowercase is fine. Make each one specific to what is in this photo, with a different angle: one dreamy, one playful or witty, one chic and minimal. Label them Dreamy, Playful and Chic. " +
-    "Up to two tasteful emojis per caption, only when they add something (for example 🤍 ✨ 🌿 🥂 🌊 ☁️ 🍃). " +
+    "No emojis at all. " +
     "Avoid cliches and cringe: no breathtaking, stunning, paradise, hidden gem, wanderlust, bucket list, living my best life, take me back, no words needed. No questions, no calls to action. Never use em dashes or en dashes. " +
     "Don't invent facts you can't see or that aren't in the trip notes; if you don't know the place name, don't guess one.\n" +
     (voice ? "Let these captions the person wrote before shape the word choice, while keeping the quiet luxury vibe:\n\"\"\"\n" + voice.slice(0, 2500) + "\n\"\"\"\n" : "") +
@@ -752,7 +753,7 @@ const CAPTION_SCHEMA = {
   }
 };
 function setCaptions(out){
-  S.captions = (out.captions || []).filter(c => c && c.text).map(c => ({ label: noDashes(c.label || ""), text: noDashes(c.text) }));
+  S.captions = (out.captions || []).filter(c => c && c.text).slice(0, 3).map(c => ({ label: noDashes(c.label || ""), text: noEmoji(noDashes(c.text)) })).filter(c => c.text);
   S.tags = (out.hashtags || []).map(t => "#" + String(t).replace(/^#+/, "").replace(/\s+/g, "")).filter(t => t.length > 1).slice(0, 8);
   S.tagOn = S.tags.map(() => true);
   S.capIdx = 0; delete $("capText").dataset.touched;
