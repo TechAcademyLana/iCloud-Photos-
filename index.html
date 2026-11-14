@@ -136,8 +136,11 @@ a.btn{text-decoration:none}
     <button class="btn secondary hidden" id="clearPhotos" style="padding:10px">Clear all photos</button>
     <div class="grid" id="thumbGrid"></div>
 
-    <label class="field" for="tripNotes">Where and what (optional, helps the caption)</label>
-    <input type="text" id="tripNotes" placeholder="e.g. Boat ride through Tam Coc, Ninh Binh">
+    <label class="field" for="locInput">Location (optional)</label>
+    <input type="text" id="locInput" placeholder="e.g. Tam Coc, Ninh Binh, Vietnam">
+    <div class="small" style="margin-top:4px">Leave blank and the app will use the photo's location if your phone shares it.</div>
+    <label class="field" for="tripNotes">Notes for the caption (optional)</label>
+    <input type="text" id="tripNotes" placeholder="e.g. sunrise boat ride">
     <div class="row">
       <div>
         <label class="field" for="dest">Posting to</label>
@@ -216,6 +219,12 @@ a.btn{text-decoration:none}
     <button class="btn secondary" id="moreCaps" style="padding:10px">More caption ideas</button>
     <label class="field" for="capText">Your caption (edit freely)</label>
     <textarea id="capText"></textarea>
+    <label class="field" for="locOut">Location</label>
+    <input type="text" id="locOut" placeholder="Add a location">
+    <div class="row">
+      <button class="chip" id="locAdd" style="margin-top:8px">Add to caption</button>
+      <button class="chip" id="locCopy" style="margin-top:8px">Copy for Instagram</button>
+    </div>
     <div class="tags">
       <label class="field">Hashtags (tap to turn off)</label>
       <div class="chips" id="tagChips"></div>
@@ -543,7 +552,32 @@ const STYLE_TEXT = {
 };
 function contextLine(){
   const notes = $("tripNotes").value.trim();
-  return "Posting to: " + DEST_NAMES[$("dest").value] + ". Trip notes from the photographer: " + (notes || "none") + ".";
+  const loc = ($("locOut") && $("locOut").value.trim()) || $("locInput").value.trim();
+  return "Posting to: " + DEST_NAMES[$("dest").value] + "." + (loc ? " Location: " + loc + "." : "") +
+    " Trip notes from the photographer: " + (notes || "none") + ".";
+}
+
+/* photo location: read GPS from the original file, if the phone kept it */
+let exifrLoading = null;
+function loadExifr(){
+  if (window.exifr) return Promise.resolve(window.exifr);
+  if (!exifrLoading) exifrLoading = new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/exifr@7/dist/full.umd.js";
+    s.onload = () => window.exifr ? res(window.exifr) : rej(new Error("no exifr"));
+    s.onerror = () => { exifrLoading = null; rej(new Error("couldn't load")); };
+    document.head.appendChild(s);
+  });
+  return exifrLoading;
+}
+async function photoGps(file){
+  try {
+    const ex = await Promise.race([loadExifr(), sleep(8000).then(() => { throw new Error("slow"); })]);
+    const g = await ex.gps(file);
+    if (g && isFinite(g.latitude) && isFinite(g.longitude) && !(g.latitude === 0 && g.longitude === 0))
+      return { lat: +g.latitude.toFixed(4), lon: +g.longitude.toFixed(4) };
+  } catch (e) {}
+  return null;
 }
 
 $("rankBtn").addEventListener("click", async () => {
@@ -662,7 +696,7 @@ const SLIDERS = [
 const ASPECTS = [["claude", "Claude's crop"], ["original", "Original"], ["4:5", "4:5"], ["1:1", "1:1"], ["3:2", "3:2"], ["16:9", "16:9"], ["9:16", "9:16"]];
 const EDIT_SCHEMA = {
   type: "object", additionalProperties: false,
-  required: ["straighten", "crop", "aspect", "exposure", "contrast", "highlights", "shadows", "warmth", "tint", "vibrance", "saturation", "vignette", "notes", "captions", "hashtags", "alt_text"],
+  required: ["straighten", "crop", "aspect", "exposure", "contrast", "highlights", "shadows", "warmth", "tint", "vibrance", "saturation", "vignette", "notes", "captions", "hashtags", "alt_text", "location"],
   properties: {
     straighten: { type: "number", description: "degrees, positive rotates clockwise" },
     crop: { type: "object", additionalProperties: false, required: ["x", "y", "w", "h"],
@@ -675,7 +709,8 @@ const EDIT_SCHEMA = {
     captions: { type: "array", items: { type: "object", additionalProperties: false, required: ["label", "text"],
       properties: { label: { type: "string" }, text: { type: "string" } } } },
     hashtags: { type: "array", items: { type: "string" } },
-    alt_text: { type: "string" }
+    alt_text: { type: "string" },
+    location: { type: "string" }
   }
 };
 
@@ -790,6 +825,10 @@ async function runEdit(style){
     const b64 = c.toDataURL("image/jpeg", 0.88).split(",")[1]; freeCanvas(c);
     const sc = scaledCanvas(S.full.img, S.fullW, S.fullH, 1024);
     S.capB64 = sc.toDataURL("image/jpeg", 0.85).split(",")[1]; freeCanvas(sc);
+    const userLoc = $("locInput").value.trim();
+    let gps = null;
+    if (!userLoc) { busy(true, "Checking where the photo was taken…", 0.3); gps = await photoGps(p.file); }
+    setLocation(userLoc);
     busy(true, "Claude is planning the edit and writing captions…", 0.45);
     const voice = store.get("voice", "").trim();
     const prompt = contextLine() + "\nEdit style: " + STYLE_TEXT[style] + "\n\n" +
@@ -801,7 +840,11 @@ async function runEdit(style){
       "Most good photos need small moves: exposure within about 0.4 and the rest within about 30. Keep skin tones and colors believable.\n" +
       "- notes: 2 to 5 short plain sentences saying what you changed and why.\n\n" +
       captionRules(voice) +
-      "- alt_text: one sentence describing the photo for people using screen readers.";
+      "- alt_text: one sentence describing the photo for people using screen readers.\n" +
+      "- location: where the photo was taken, written the way Instagram shows places, like 'Tam Coc, Ninh Binh, Vietnam'. " +
+      (userLoc ? "Use the location the person gave: " + userLoc + "." :
+        gps ? "The photo's GPS position is latitude " + gps.lat + ", longitude " + gps.lon + ". Name that place, only as specific as you are sure of (town or area, province or city, country)." :
+        "No location was given. Use one only if the trip notes name it or the photo shows a famous, unmistakable landmark; otherwise an empty string.");
     const content = [{ type: "text", text: prompt }, { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } }];
     const out = await callClaude({
       system: "You are a skilled photo retoucher and a good writer who helps one person edit and post their own travel photos.",
@@ -813,6 +856,7 @@ async function runEdit(style){
     invalidateExport();
     $("editNotes").innerHTML = (out.notes || []).slice(0, 6).map(n => "<li>" + esc(noDashes(n)) + "</li>").join("");
     setCaptions(out);
+    setLocation(userLoc || noDashes(out.location || "").replace(/\.$/, ""));
     $("altText").value = noDashes(out.alt_text || "");
     $("style2").value = style;
     busy(false);
@@ -963,8 +1007,29 @@ function renderCaptions(){
 $("capText").addEventListener("input", () => { $("capText").dataset.touched = "1"; });
 function fullCaption(){
   const tags = S.tags.filter((t, i) => S.tagOn[i]).join(" ");
-  return noDashes($("capText").value).trim() + (tags ? "\n\n" + tags : "");
+  const loc = $("locOut").value.trim();
+  const addLoc = loc && $("locAdd").classList.contains("on");
+  return noDashes($("capText").value).trim() + (addLoc ? "\n\n" + loc : "") + (tags ? "\n\n" + tags : "");
 }
+function setLocation(loc){
+  $("locOut").value = loc || "";
+  $("locAdd").classList.toggle("on", !!loc);
+  $("locAdd").textContent = loc ? "Added to caption" : "Add to caption";
+}
+$("locAdd").addEventListener("click", () => {
+  const on = !$("locAdd").classList.contains("on") && !!$("locOut").value.trim();
+  if (on) delete $("locAdd").dataset.userOff; else $("locAdd").dataset.userOff = "1";
+  $("locAdd").classList.toggle("on", on); $("locAdd").textContent = on ? "Added to caption" : "Add to caption";
+  if (!on && !$("locOut").value.trim()) toast("Type a location first");
+  saveLast(S.exportFile, fullCaption());
+});
+$("locOut").addEventListener("input", () => {
+  if ($("locOut").value.trim() && !$("locAdd").dataset.userOff) { $("locAdd").classList.add("on"); $("locAdd").textContent = "Added to caption"; }
+});
+$("locCopy").addEventListener("click", () => {
+  const loc = $("locOut").value.trim(); if (!loc) { toast("No location yet"); return; }
+  copyText(loc).then(ok => toast(ok === false ? "Couldn't copy" : "Location copied. Paste it in Instagram's Add location."));
+});
 
 $("toPost").addEventListener("click", () => { show("s4", true); renderCaptions(); prepareExport(); $("s4").scrollIntoView({ behavior: "smooth", block: "start" }); });
 $("exportSize").addEventListener("change", () => { invalidateExport(); prepareExport(); });
@@ -1030,6 +1095,7 @@ function resetAfter(step){
   if (step <= 2) {
     show("s3", false); show("s4", false); S.claude = null; S.p = null; S.captions = []; S.capIdx = 0; S.tags = []; S.tagOn = [];
     $("capText").value = ""; delete $("capText").dataset.touched; $("altText").value = ""; $("editErr").textContent = "";
+    setLocation(""); delete $("locAdd").dataset.userOff;
     S.exportFile = null; if (S.exportUrl) { URL.revokeObjectURL(S.exportUrl); S.exportUrl = null; }
   }
 }
@@ -1083,7 +1149,7 @@ $("saveKey").onclick = async () => {
 $("cancelBtn").onclick = () => { try { S.abort && S.abort.abort(); } catch (e) {} busy(false); };
 
 /* remember choices */
-["dest", "style"].forEach(id => { const v = store.get(id, ""); if (v) $(id).value = v; $(id).addEventListener("change", () => store.set(id, $(id).value)); });
+["dest", "style", "locInput"].forEach(id => { const v = store.get(id, ""); if (v) $(id).value = v; $(id).addEventListener("change", () => store.set(id, $(id).value)); });
 
 /* start */
 renderSpend(); refreshKeyBanner();
