@@ -98,6 +98,17 @@ ul.notes li{margin:3px 0}
 a{color:var(--accent)}
 a.btn{text-decoration:none}
 .small{font-size:12px;color:var(--muted)}
+.coach{border-top:1px solid var(--line);padding:14px 0 4px;margin-top:14px}
+.coach .shot{display:block;width:100%;border-radius:10px;background:#000;cursor:pointer}
+.coach .tag{display:inline-block;background:var(--accent);color:var(--accent-ink);font-size:13px;font-weight:650;border-radius:12px;padding:3px 10px;margin:10px 0 0}
+.coach .tag.good{background:var(--good)}
+.coach h3{font-size:13px;font-weight:650;color:var(--muted);margin:10px 0 2px;text-transform:uppercase;letter-spacing:.4px}
+.coach p{font-size:15px;margin:0}
+.coach ul.notes{font-size:15px;margin-top:2px}
+.coach ul.notes li{margin:5px 0}
+.sum{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:10px;font-size:15px}
+.sum b{color:var(--accent)}
+.sum div+div{margin-top:8px}
 </style>
 </head>
 <body>
@@ -176,7 +187,7 @@ a.btn{text-decoration:none}
     <div class="grid" id="bGrid" style="grid-template-columns:repeat(3,1fr)"></div>
     <button class="btn" id="bSave" disabled>Save to Photos</button>
     <div id="bChunks" class="hidden"></div>
-    <p class="hint">Save opens the share sheet. Tap <b>Save Images</b> there and they all go to your Photos. Your originals are not changed. Tap any photo here to fine-tune it and get captions.</p>
+    <p class="hint">Save opens the share sheet. Tap <b>Save Images</b> there and they all go to your Photos. Your originals are not changed. Tap any photo here to fine-tune it and get captions. Coaching notes on each one are further down.</p>
     <label class="field">Do another</label>
     <div class="row">
       <button class="btn secondary more" data-n="5" style="margin-top:0">5</button>
@@ -185,6 +196,15 @@ a.btn{text-decoration:none}
     </div>
     <div class="small" id="bLeft" style="margin-top:6px;text-align:center"></div>
     <div class="err" id="bErr"></div>
+  </section>
+
+  <!-- PHOTO COACH -->
+  <section id="sC" class="hidden">
+    <h2>Photo coach</h2>
+    <p class="hint">What to do next time you shoot, so the photo needs less fixing. Each picture is your shot as you took it. The gold box is how I reframed it, the dark part is what I cut, and the faint lines split the frame in thirds. Tap a picture to flip to the edited one.</p>
+    <div id="cSum"></div>
+    <div id="cList"></div>
+    <p class="small" style="margin-top:14px">Turn on the grid lines in your camera or phone and you'll see those same thirds while you shoot.</p>
   </section>
 
   <!-- STEP 2 -->
@@ -210,6 +230,10 @@ a.btn{text-decoration:none}
       <div class="holdTag">Hold to see original</div>
     </div>
     <ul class="notes" id="editNotes"></ul>
+    <details id="coachBox" class="hidden">
+      <summary>Photo coach: what to do next time</summary>
+      <div id="coachOne"></div>
+    </details>
 
     <label class="field">Crop</label>
     <div class="chips" id="aspectChips"></div>
@@ -297,7 +321,7 @@ a.btn{text-decoration:none}
         <option value="claude-opus-5-5">Claude Opus 5.5 (sharper eye, about 2x cost)</option>
         <option value="claude-haiku-5-5">Claude Haiku 5.5 (cheapest, rougher picks)</option>
       </select>
-      <p class="hint">Scoring 40 photos and editing the best 15 with Sonnet costs roughly 25 cents.</p>
+      <p class="hint">Scoring 40 photos, editing the best 15 and coaching you on each with Sonnet costs roughly 30 cents.</p>
     </section>
     <section>
       <h2>Sound like you</h2>
@@ -663,8 +687,8 @@ function estimateText(){
   const n = a.filter(p => p.score == null).length;
   const [pi, po] = PRICES[store.get("model", "claude-sonnet-5-5")] || [2, 10];
   const batches = Math.ceil(n / BATCH), k = Math.min(BEST, a.filter(p => !p.done).length);
-  const inTok = n * 290 + batches * 900 + Math.min(a.length, 30) * 290 + 600 + k * 3400;
-  const outTok = n * 45 + batches * 1500 + 600 + k * 450;
+  const inTok = n * 290 + batches * 900 + Math.min(a.length, 30) * 290 + 600 + k * 3750;
+  const outTok = n * 45 + batches * 1500 + 600 + k * 700;
   const cost = inTok / 1e6 * pi + outTok / 1e6 * po;
   return "Estimated cost for picking and editing the best " + BEST + ": about $" + Math.max(0.01, cost).toFixed(2);
 }
@@ -760,6 +784,108 @@ function editRules(style){
     "Most good photos need small moves: exposure within about 0.4 and the rest within about 30. Keep skin tones and colors believable.\n";
 }
 function stopped(){ if (S.cancelled) throw new Error("Cancelled."); }
+
+/* ---------------- photo coach: for each photo picked, what to do better next time ---------------- */
+const LESSONS = {   // the one idea a photo teaches: [name, how to do it]
+  closer: ["Get closer", "Before you press the button, take two steps in or zoom until the subject is big in the frame."],
+  level: ["Level the horizon", "Line up the horizon or a building edge with the grid lines before you shoot."],
+  edges: ["Check the edges", "Run your eye around all four edges and shift to drop anything cut off or poking in."],
+  background: ["Clean up the background", "Move left, right, up or down until nothing busy sits behind the subject."],
+  thirds: ["Move the subject off center", "Put the subject or the horizon on one of the thirds lines, not in the middle."],
+  room: ["Leave room around the subject", "Back up a little so nothing important touches the edge, with extra space on the side the subject faces."],
+  height: ["Change your height", "Crouch down or hold the camera up high for a view people don't usually see."],
+  foreground: ["Add a foreground", "Put something close to you at the bottom or side of the frame to give the scene depth."],
+  lines: ["Use the lines", "Let a path, river, railing or wall start near a corner and lead the eye to the subject."],
+  light: ["Work with the light", "Notice where the light comes from and move until it shows off the subject."],
+  moment: ["Wait for the moment", "Hold your frame and wait until a person, boat or gesture lands in the right spot."],
+  turn: ["Turn the camera", "Tall subjects and Instagram posts want an upright frame. Wide scenes want a sideways one."],
+  good: ["Framed well", "Nothing to fix. Remember what you did and do it again."]
+};
+const CRITIQUE_SCHEMA = {
+  type: "object", additionalProperties: false, required: ["worked", "next_time", "lesson"],
+  properties: {
+    worked: { type: "string", description: "one sentence" },
+    next_time: { type: "array", items: { type: "string" }, description: "2 or 3 items, one sentence each" },
+    lesson: { type: "string", enum: Object.keys(LESSONS) }
+  }
+};
+function withCoach(schema){
+  return Object.assign({}, schema, { required: schema.required.concat("critique"),
+    properties: Object.assign({}, schema.properties, { critique: CRITIQUE_SCHEMA }) });
+}
+function coachRules(){
+  return "- critique: you are also this person's photography coach. They are a beginner who wants to learn to frame and compose better from their own photos. Judge the photo as it came out of the camera, before your edit. Be honest and kind.\n" +
+    "  worked: one sentence on what they did well in the framing or composition of this photo.\n" +
+    "  next_time: 2 or 3 things to do differently while shooting, most important first. Each is one sentence and one concrete action: where to stand, step closer or back, crouch or hold the camera higher, turn the camera upright or sideways, where in the frame to put the subject or the horizon, what to leave out, what to wait for. " +
+    "Name the thing in this photo you mean (the boat, the pole on the left edge, the empty sky). When your crop or straighten fixed a framing problem, say what it fixed and how to get that in the camera. A crop made only to fit the posting shape is not a mistake. " +
+    "If the photo is already well composed, give 1 or 2 ideas for a different version worth trying from the same spot. " +
+    "No advice that would fit any photo. Stick to framing, composition and where to stand for the light: nothing about editing or camera settings. Plain words, and if you use a photography term, explain it in a few words. Never use em dashes or en dashes.\n" +
+    "  lesson: the one idea this photo teaches most: " + Object.keys(LESSONS).map(k => k + " (" + LESSONS[k][0].toLowerCase() + ")").join(", ") + ". Use good only when the framing needs no real change.\n";
+}
+function coachFrom(c){
+  if (!c || typeof c !== "object") return null;
+  const tidy = s => noDashes(String(s || "")).trim();
+  const next = (Array.isArray(c.next_time) ? c.next_time : []).map(tidy).filter(Boolean).slice(0, 3);
+  const worked = tidy(c.worked);
+  if (!worked && !next.length) return null;
+  return { worked, next, lesson: Object.prototype.hasOwnProperty.call(LESSONS, c.lesson) ? c.lesson : "" };
+}
+/* the photo as it was shot, with the new framing drawn on it: gold box = kept, dark = cut, faint lines = thirds */
+const COACH_EDGE = 720;
+function coachPicture(src, W, H, P){
+  const cv = scaledCanvas(src, W, H, COACH_EDGE), s = cv.width / W, ctx = cv.getContext("2d");
+  const r = cropFor(P, W, H), th = P.straighten * Math.PI / 180, co = Math.cos(th), si = Math.sin(th);
+  const k = Math.max((W * Math.abs(co) + H * Math.abs(si)) / W, (W * Math.abs(si) + H * Math.abs(co)) / H);
+  // a point of the new frame (u and v run 0 to 1), found on the original photo. A tilted box means the camera was tilted.
+  const pt = (u, v) => { const dx = (r.x + r.w * u - W / 2) / k, dy = (r.y + r.h * v - H / 2) / k;
+    return [(W / 2 + dx * co + dy * si) * s, (H / 2 - dx * si + dy * co) * s]; };
+  const path = pts => { ctx.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]); };
+  const box = [pt(0, 0), pt(1, 0), pt(1, 1), pt(0, 1)];
+  ctx.fillStyle = "rgba(0,0,0,.62)"; ctx.beginPath(); ctx.rect(0, 0, cv.width, cv.height); path(box); ctx.closePath(); ctx.fill("evenodd");
+  ctx.lineWidth = Math.max(1, cv.width / 480); ctx.strokeStyle = "rgba(255,255,255,.5)"; ctx.beginPath();
+  for (const t of [1 / 3, 2 / 3]) { path([pt(t, 0), pt(t, 1)]); path([pt(0, t), pt(1, t)]); }
+  ctx.stroke();
+  ctx.lineWidth = Math.max(2, cv.width / 200); ctx.strokeStyle = "#f2b134"; ctx.lineJoin = "round"; ctx.beginPath(); path(box); ctx.closePath(); ctx.stroke();
+  const img = cv.toDataURL("image/jpeg", 0.8); freeCanvas(cv);
+  return { img, cut: clamp(1 - (r.w * r.h) / (k * k * W * H), 0, 1), tilt: P.straighten };
+}
+function framingLine(c){
+  const cut = Math.round(c.cut * 100), tilt = Math.abs(c.tilt) >= 0.5 ? Math.abs(c.tilt).toFixed(1).replace(/\.0$/, "") + "°" : "";
+  if (cut >= 4) return "I cut about " + cut + "% of your frame" + (tilt ? " and leveled it by " + tilt + "." : ".");
+  return tilt ? "I kept your framing and only leveled it by " + tilt + "." : "I kept your framing just as you shot it.";
+}
+function coachCard(p, edited){
+  const c = p.coach, L = LESSONS[c.lesson], d = document.createElement("div"); d.className = "coach";
+  d.innerHTML = (c.img ? '<img class="shot" alt="Your photo with the new framing marked" src="' + c.img + '"><div class="small cap2" style="margin-top:6px">' + esc(framingLine(c)) + "</div>" : "") +
+    (L ? '<div class="tag' + (c.lesson === "good" ? " good" : "") + '">' + esc(L[0]) + "</div>" : "") +
+    (c.worked ? "<h3>What worked</h3><p>" + esc(c.worked) + "</p>" : "") +
+    (c.next.length ? "<h3>" + (c.lesson === "good" ? "Worth trying next time" : "Next time") + '</h3><ul class="notes">' + c.next.map(t => "<li>" + esc(t) + "</li>").join("") + "</ul>" : "");
+  const im = d.querySelector(".shot");
+  if (im && edited) im.onclick = () => {
+    const on = im.dataset.e !== "1"; im.dataset.e = on ? "1" : ""; im.src = on ? edited : c.img;
+    d.querySelector(".cap2").textContent = on ? "This is the edited photo. Tap to go back to your shot." : framingLine(c);
+  };
+  return d;
+}
+function renderCoach(){
+  const items = S.batch.filter(it => it.p.coach).sort((x, y) => y.round - x.round || y.p.score - x.p.score);
+  show("sC", items.length > 0);
+  const list = $("cList"); list.innerHTML = "";
+  items.forEach(it => list.appendChild(coachCard(it.p, it.thumb)));
+  // what comes up most across these photos
+  const n = {}; items.forEach(it => { const k = it.p.coach.lesson; if (k) n[k] = (n[k] || 0) + 1; });
+  const top = Object.keys(n).filter(k => k !== "good" && n[k] >= 2).sort((a, b) => n[b] - n[a]).slice(0, 2);
+  const of = " of " + items.length + " photos";
+  const rows = top.map((k, i) => "<div><b>" + (i ? "Then: " : "Practice most: ") + esc(LESSONS[k][0]) + "</b> (" + n[k] + of + "). " + esc(LESSONS[k][1]) + "</div>");
+  if (n.good && items.length >= 3) rows.push("<div>" + n.good + of + (n.good === 1 ? " was" : " were") + " framed well as shot.</div>");
+  $("cSum").innerHTML = rows.length ? '<div class="sum">' + rows.join("") + "</div>" : "";
+}
+function showCoachOne(p){
+  const box = $("coachOne"); box.innerHTML = "";
+  const has = !!(p && p.coach);
+  if (has) { const it = S.batch.find(b => b.p === p); box.appendChild(coachCard(p, it && it.thumb)); }
+  show("coachBox", has);
+}
 
 /* heavy image work runs one at a time so the phone doesn't run out of memory */
 let heavy = Promise.resolve();
@@ -857,12 +983,12 @@ async function editOne(p, style, keepLoc, edge, name){
   });
   stopped();
   const ans = await callClaude({
-    system: "You are a skilled photo retoucher who helps one person edit their own travel photos.",
-    content: [{ type: "text", text: editRules(style) }, { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } }],
-    schema: BATCH_EDIT_SCHEMA, maxTokens: 16000
+    system: "You are a skilled photo retoucher and a patient photography coach who helps one person edit their own travel photos and learn from them.",
+    content: [{ type: "text", text: editRules(style) + coachRules() }, { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } }],
+    schema: withCoach(BATCH_EDIT_SCHEMA), maxTokens: 16000
   });
   stopped();
-  const P = sanitizeEdit(ans);
+  const P = sanitizeEdit(ans), coach = coachFrom(ans.critique);
   const gps = keepLoc ? await photoGps(p.file) : null;
   return serial(async () => {
     stopped();
@@ -875,6 +1001,7 @@ async function editOne(p, style, keepLoc, edge, name){
       const hash = dhash(th), thumb = th.toDataURL("image/jpeg", 0.8), dims = cv.width + "x" + cv.height;
       freeCanvas(th); freeCanvas(cv);
       if (gps) { try { blob = await withGps(blob, gps.lat, gps.lon); } catch (e) {} }
+      if (coach) { try { Object.assign(coach, coachPicture(d.img, d.w, d.h, P)); } catch (e) {} p.coach = coach; }
       return { p, file: new File([blob], name, { type: "image/jpeg" }), thumb, hash, dims, saved: false, round: S.round };
     } finally { URL.revokeObjectURL(d.url); d.img.src = ""; }
   });
@@ -961,6 +1088,7 @@ function renderBatch(failed){
   $("bLeft").textContent = left ? left + " more good one" + (left === 1 ? "" : "s") + " left in these photos." : "That's all the good ones in these photos. Add more photos to keep going.";
   document.querySelectorAll("#sB .more").forEach(b => { b.disabled = !left; });
   show("bChunks", false); $("bChunks").innerHTML = "";
+  renderCoach();
 }
 function shareItems(items){
   const files = items.map(it => it.file);
@@ -991,6 +1119,7 @@ function chunkButtons(){
 $("bSave").addEventListener("click", () => { const u = unsaved(); if (u.length) shareItems(u); });
 function clearBatch(){
   S.batch = []; S.queue = []; S.round = 0; show("sB", false); $("bGrid").innerHTML = ""; $("bErr").textContent = "";
+  show("sC", false); $("cList").innerHTML = ""; $("cSum").innerHTML = "";
 }
 
 /* ---------------- step 2: results ---------------- */
@@ -1176,8 +1305,9 @@ async function runEdit(style){
     setLocation(userLoc);
     busy(true, "Claude is planning the edit and writing captions…", 0.45);
     const voice = store.get("voice", "").trim();
+    const needCoach = !p.coach;   // coached already when it was picked for the best 15
     const prompt = editRules(style) +
-      "- notes: 2 to 5 short plain sentences saying what you changed and why.\n\n" +
+      "- notes: 2 to 5 short plain sentences saying what you changed and why.\n" + (needCoach ? coachRules() : "") + "\n" +
       captionRules(voice) +
       "- alt_text: one sentence describing the photo for people using screen readers.\n" +
       "- location: where the photo was taken, written the way Instagram shows places, like 'Tam Coc, Ninh Binh, Vietnam'. " +
@@ -1187,10 +1317,15 @@ async function runEdit(style){
         "No location was given. Use one only if the trip notes name it or the photo shows a famous, unmistakable landmark; otherwise an empty string.");
     const content = [{ type: "text", text: prompt }, { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } }];
     const out = await callClaude({
-      system: "You are a skilled photo retoucher and a good writer who helps one person edit and post their own travel photos.",
-      content, schema: EDIT_SCHEMA, maxTokens: 16000
+      system: "You are a skilled photo retoucher, a patient photography coach and a good writer who helps one person edit, learn from and post their own travel photos.",
+      content, schema: needCoach ? withCoach(EDIT_SCHEMA) : EDIT_SCHEMA, maxTokens: 16000
     });
     S.claude = sanitizeEdit(out);
+    if (needCoach) {
+      const c = coachFrom(out.critique);
+      if (c) { try { Object.assign(c, coachPicture(S.full.img, S.fullW, S.fullH, S.claude)); } catch (e) {} p.coach = c; renderCoach(); }
+    }
+    showCoachOne(p);
     S.p = JSON.parse(JSON.stringify(S.claude));
     S.capIdx = 0; delete $("capText").dataset.touched;
     invalidateExport();
