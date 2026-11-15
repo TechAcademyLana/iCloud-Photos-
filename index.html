@@ -129,6 +129,9 @@ a.btn{text-decoration:none}
   <!-- STEP 1 -->
   <section id="s1">
     <h2><span class="step">1</span>Choose your trip photos</h2>
+    <label class="field">Only use photos from the last</label>
+    <div class="chips" id="dayChips"></div>
+    <div class="small" id="dayInfo" style="margin-top:4px"></div>
     <p class="hint">Tap below and choose <b>Photo Library</b> (not Choose File). Tap each photo so it gets a check mark, or slide your finger across a row to check many at once, then tap <b>Add</b>. You can come back and add more, up to 150.</p>
     <label class="btn" for="fileInput" id="pickLabel">Choose photos</label>
     <input id="fileInput" type="file" accept="image/heic,image/heif,image/jpeg,image/png,image/webp" multiple class="hidden">
@@ -161,9 +164,27 @@ a.btn{text-decoration:none}
         </select>
       </div>
     </div>
-    <button class="btn" id="rankBtn" disabled>Find my best shot</button>
+    <button class="btn" id="rankBtn" disabled>Pick, edit and save my best 15</button>
     <div class="small" id="rankEstimate" style="margin-top:6px;text-align:center"></div>
     <div class="err" id="rankErr"></div>
+  </section>
+
+  <!-- BEST 15 -->
+  <section id="sB" class="hidden">
+    <h2><span class="step">2</span>Your best, edited</h2>
+    <p class="hint" id="bInfo"></p>
+    <div class="grid" id="bGrid" style="grid-template-columns:repeat(3,1fr)"></div>
+    <button class="btn" id="bSave" disabled>Save to Photos</button>
+    <div id="bChunks" class="hidden"></div>
+    <p class="hint">Save opens the share sheet. Tap <b>Save Images</b> there and they all go to your Photos. Your originals are not changed. Tap any photo here to fine-tune it and get captions.</p>
+    <label class="field">Do another</label>
+    <div class="row">
+      <button class="btn secondary more" data-n="5" style="margin-top:0">5</button>
+      <button class="btn secondary more" data-n="10" style="margin-top:0">10</button>
+      <button class="btn secondary more" data-n="15" style="margin-top:0">15</button>
+    </div>
+    <div class="small" id="bLeft" style="margin-top:6px;text-align:center"></div>
+    <div class="err" id="bErr"></div>
   </section>
 
   <!-- STEP 2 -->
@@ -276,7 +297,7 @@ a.btn{text-decoration:none}
         <option value="claude-opus-5-5">Claude Opus 5.5 (sharper eye, about 2x cost)</option>
         <option value="claude-haiku-5-5">Claude Haiku 5.5 (cheapest, rougher picks)</option>
       </select>
-      <p class="hint">A typical run of 40 photos with Sonnet costs a few cents.</p>
+      <p class="hint">Scoring 40 photos and editing the best 15 with Sonnet costs roughly 25 cents.</p>
     </section>
     <section>
       <h2>Sound like you</h2>
@@ -327,7 +348,8 @@ const store = {
 
 const S = {
   photos: [],        // {id, file, thumb, b64, w, h, hash, key, score, note, issues, similar}
-  seen: {}, skippedSeen: [],
+  seen: {}, skippedSeen: [], info: {},
+  days: 0, queue: [], batch: [], round: 0, made: [], aborts: new Set(), cancelled: false,
   finalists: [], whyById: {}, chosen: null,
   full: null, fullW: 0, fullH: 0, prevSrc: null,
   claude: null,      // edit params from Claude
@@ -386,7 +408,7 @@ async function callClaude({ system, content, schema, effort, maxTokens }){
   let version = API_VERSION, plainJson = false;
 
   for (let attempt = 0; attempt < 6; attempt++) {
-    S.abort = new AbortController();
+    const ac = new AbortController(); S.abort = ac; S.aborts.add(ac);
     let res;
     try {
       res = await fetch(API_URL, {
@@ -400,11 +422,13 @@ async function callClaude({ system, content, schema, effort, maxTokens }){
         body: JSON.stringify(body)
       });
     } catch (e) {
+      S.aborts.delete(ac);
       if (e.name === "AbortError") throw new Error("Cancelled.");
       if (attempt < 2) { await sleep(1500); continue; }
       throw new Error("Couldn't reach Claude. Check your connection and try again.");
     }
     let data = null; try { data = await res.json(); } catch (e) {}
+    S.aborts.delete(ac);
     const msg = (data && data.error && data.error.message) || ("HTTP " + res.status);
 
     if (res.ok) {
@@ -428,7 +452,7 @@ async function callClaude({ system, content, schema, effort, maxTokens }){
       throw new Error("Claude API error: " + msg);
     }
     if (res.status === 429 || res.status === 529 || res.status >= 500) {
-      if (attempt < 5) { busy(true, "Claude is busy, retrying…"); await sleep(2000 * Math.pow(2, attempt)); continue; }
+      if (attempt < 5) { if (!S.batchRunning) busy(true, "Claude is busy, retrying…"); await sleep(2000 * Math.pow(2, attempt)); if (S.cancelled && S.batchRunning) throw new Error("Cancelled."); continue; }
       throw new Error("Claude is busy right now. Try again in a minute.");
     }
     throw new Error("Claude API error: " + msg);
@@ -501,7 +525,8 @@ $("fileInput").addEventListener("change", async e => {
   resetAfter(1);
   busy(true, "Getting your photos ready…", 0);
   $("cancelBtn").classList.add("hidden");
-  let skipped = 0, done = 0, next = 0;
+  let skipped = 0, done = 0, next = 0, old = 0;
+  const cutoff = dayCutoff(S.days), dates = new Array(files.length);
   // two at a time: faster on iPhone without using too much memory
   const slots = files.map(() => { const c = document.createElement("div"); c.className = "cell"; $("thumbGrid").appendChild(c); return c; });
   const results = new Array(files.length);
@@ -509,16 +534,20 @@ $("fileInput").addEventListener("change", async e => {
     while (next < files.length) {
       const i = next++;
       try {
-        const t = await jpegB64(files[i], THUMB);
-        results[i] = t;
-        slots[i].innerHTML = '<img alt="" src="' + t.dataUrl + '">';
+        const when = await photoDate(files[i]); dates[i] = when;
+        if (cutoff && when && when < cutoff) { results[i] = null; old++; slots[i].remove(); }   // older than the days chosen: don't even open it
+        else {
+          const t = await jpegB64(files[i], THUMB);
+          results[i] = t;
+          slots[i].innerHTML = '<img alt="" src="' + t.dataUrl + '">';
+        }
       } catch (err) { results[i] = null; skipped++; slots[i].remove(); }
       done++;
       busy(true, "Getting your photos ready… " + done + " of " + files.length, done / files.length);
     }
   }
   await Promise.all([worker(), worker()]);
-  let already = 0, before = 0;
+  let already = 0, before = 0, own = 0;
   files.forEach((f, i) => {
     const t = results[i]; if (!t) return;
     const key = f.size + "|" + t.w + "x" + t.h + "|" + t.hash;
@@ -528,25 +557,85 @@ $("fileInput").addEventListener("change", async e => {
       if (!S.skippedSeen.some(p => p.key === key)) S.skippedSeen.push({ file: f, thumb: t.dataUrl, b64: t.b64, w: t.w, h: t.h, hash: t.hash, key });
       return;
     }
-    const p = { id: S.photos.length + 1, file: f, thumb: t.dataUrl, b64: t.b64, w: t.w, h: t.h, hash: t.hash, key, score: null };
+    if (isOwnEdit(t, f)) { own++; slots[i].remove(); return; }                                           // a copy this app already edited and saved
+    const p = { id: S.photos.length + 1, file: f, thumb: t.dataUrl, b64: t.b64, w: t.w, h: t.h, hash: t.hash, key, score: null, date: dates[i] || 0 };
     S.photos.push(p); slots[i].id = "cell" + p.id;
   });
   $("cancelBtn").classList.remove("hidden");
   busy(false);
-  pickInfo(skipped, already);
+  pickInfo({ skipped, already, old, own });
   $("pickLabel").textContent = "Add more photos";
   show("clearPhotos", S.photos.length > 0);
-  $("rankBtn").disabled = S.photos.length < 1;
-  $("rankEstimate").textContent = estimateText();
+  applyDays();
 });
-function pickInfo(skipped, already){
-  const n = S.photos.length, b = S.skippedSeen.length;
+function pickInfo(info){
+  if (info) S.info = info;
+  const { skipped, already, old, own } = S.info;
+  const n = act().length, hid = S.photos.length - n, b = S.skippedSeen.length;
   $("pickInfo").innerHTML = n + " photo" + (n === 1 ? "" : "s") + " ready." +
+    (hid ? " " + hid + " older than " + dayWords() + " " + (hid === 1 ? "is" : "are") + " set aside." : "") +
+    (old ? " " + old + " older " + (old === 1 ? "one was" : "ones were") + " left out when you added them." : "") +
+    (own ? " " + own + " already edited by this app, left out." : "") +
     (already ? " " + already + " already added, skipped." : "") +
     (skipped ? " " + skipped + " couldn't be opened." : "") +
     (b ? " " + b + " you reviewed before " + (b === 1 ? "was" : "were") + " left out so you don't pay for them again." : "");
   show("includeSeen", b > 0);
   $("includeSeen").textContent = "Include the " + b + " reviewed before (no extra cost)";
+}
+
+/* ---------------- only the last few days ---------------- */
+const DAY_OPTS = [[0, "All"], [1, "1 day"], [2, "2 days"], [3, "3 days"], [4, "4 days"], [5, "5 days"]];
+/* a "day" starts at 4am, so late-night photos stay with the day they belong to */
+function dayCutoff(n){
+  if (!n) return 0;
+  const d = new Date(Date.now() - 4 * 3600e3); d.setHours(0, 0, 0, 0);
+  return d.getTime() + 4 * 3600e3 - (n - 1) * 86400e3;
+}
+function dayWords(){ return S.days === 1 ? "today" : "the last " + S.days + " days"; }
+function inWindow(p){ return !S.days || !p.date || p.date >= dayCutoff(S.days); }
+function act(){ return S.photos.filter(inWindow); }
+let exifrBroken = false;
+async function photoDate(file){
+  if (!exifrBroken) {
+    try {
+      const ex = await Promise.race([loadExifr(), sleep(8000).then(() => { throw new Error("slow"); })]);
+      try {
+        const t = await ex.parse(file, ["DateTimeOriginal", "CreateDate"]);
+        const d = t && (t.DateTimeOriginal || t.CreateDate);
+        if (d instanceof Date && isFinite(d.getTime())) return d.getTime();
+      } catch (e) {}
+    } catch (e) { exifrBroken = true; }
+  }
+  return num(file.lastModified, 0);
+}
+function buildDayChips(){
+  const box = $("dayChips"); box.innerHTML = "";
+  for (const [n, label] of DAY_OPTS) {
+    const b = document.createElement("button"); b.className = "chip" + (S.days === n ? " on" : ""); b.textContent = label;
+    b.onclick = () => { S.days = n; store.set("days", n); buildDayChips(); resetAfter(1); applyDays(); };
+    box.appendChild(b);
+  }
+  $("dayInfo").textContent = !S.days ? "Every photo you choose is used." :
+    "Photos taken before " + new Date(dayCutoff(S.days)).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }) + " are skipped, even if you check them.";
+}
+function applyDays(){
+  S.photos.forEach(p => { const c = $("cell" + p.id); if (c) c.classList.toggle("hidden", !inWindow(p)); });
+  if (S.photos.length || S.skippedSeen.length) pickInfo();
+  $("rankBtn").disabled = act().length < 1;
+  $("rankEstimate").textContent = estimateText();
+}
+/* copies this app made: remembered by how they look, so they aren't picked and edited again */
+function isOwnEdit(t, file){
+  const d = t.w + "x" + t.h;
+  return S.made.some(m => m.d === d && (m.z === file.size || (!!t.hash && ham(m.h, t.hash) <= 8)));
+}
+function rememberMade(dims, hash, size){
+  S.made.push({ d: dims, h: hash, z: size }); if (S.made.length > 3000) S.made = S.made.slice(-3000);
+  idb().then(db => db.transaction("kv", "readwrite").objectStore("kv").put(S.made, "made")).catch(() => {});
+}
+function loadMade(){
+  return idb().then(db => new Promise(res => { const r = db.transaction("kv").objectStore("kv").get("made"); r.onsuccess = () => res(r.result || []); r.onerror = () => res([]); }))
+    .then(m => { if (Array.isArray(m)) S.made = m; }).catch(() => {});
 }
 $("includeSeen").addEventListener("click", () => {
   resetAfter(1);
@@ -558,26 +647,26 @@ $("includeSeen").addEventListener("click", () => {
     const cell = document.createElement("div"); cell.className = "cell"; cell.id = "cell" + p.id;
     cell.innerHTML = '<img alt="" src="' + p.thumb + '">'; $("thumbGrid").appendChild(cell);
   }
-  S.skippedSeen = []; pickInfo(0, 0);
+  S.skippedSeen = []; pickInfo({});
   $("pickLabel").textContent = "Add more photos"; show("clearPhotos", true);
-  $("rankBtn").disabled = S.photos.length < 1; $("rankEstimate").textContent = estimateText();
+  applyDays();
 });
 function clearPhotos(){
-  resetAfter(1); S.photos = []; S.skippedSeen = []; show("includeSeen", false); $("thumbGrid").innerHTML = ""; $("pickInfo").textContent = "";
+  resetAfter(1); S.photos = []; S.skippedSeen = []; S.info = {}; clearBatch(); show("includeSeen", false); $("thumbGrid").innerHTML = ""; $("pickInfo").textContent = "";
   $("pickLabel").textContent = "Choose photos"; show("clearPhotos", false);
   $("rankBtn").disabled = true; $("rankEstimate").textContent = ""; $("rankErr").textContent = "";
 }
 $("clearPhotos").addEventListener("click", clearPhotos);
 
 function estimateText(){
-  if (!S.photos.length) return "";
-  const n = S.photos.filter(p => p.score == null).length;
+  const a = act(); if (!a.length) return "";
+  const n = a.filter(p => p.score == null).length;
   const [pi, po] = PRICES[store.get("model", "claude-sonnet-5-5")] || [2, 10];
-  const batches = Math.ceil(n / BATCH);
-  const inTok = n * 290 + batches * 900 + 8 * 1100 + 1200 + 2600 + 1500;
-  const outTok = n * 45 + batches * 1500 + 2500 + 4000;
+  const batches = Math.ceil(n / BATCH), k = Math.min(BEST, a.filter(p => !p.done).length);
+  const inTok = n * 290 + batches * 900 + Math.min(a.length, 30) * 290 + 600 + k * 3400;
+  const outTok = n * 45 + batches * 1500 + 600 + k * 450;
   const cost = inTok / 1e6 * pi + outTok / 1e6 * po;
-  return "Estimated cost for picking and editing: about $" + Math.max(0.01, cost).toFixed(2);
+  return "Estimated cost for picking and editing the best " + BEST + ": about $" + Math.max(0.01, cost).toFixed(2);
 }
 
 const RANK_SCHEMA = {
@@ -640,85 +729,269 @@ async function photoGps(file){
   return null;
 }
 
-$("rankBtn").addEventListener("click", async () => {
-  $("rankErr").textContent = "";
-  if (!store.get("key", "")) { openSettings(); return; }
-  resetAfter(1);
-  try {
-    const todo = S.photos.filter(p => p.score == null);
-    const n = todo.length;
-    const batches = [];
-    for (let i = 0; i < n; i += BATCH) batches.push(todo.slice(i, i + BATCH));
-    const sys = "You are an experienced travel photo editor helping one person choose the best photos from their own trip to edit and post. Be honest, specific and consistent.";
-    for (let b = 0; b < batches.length; b++) {
-      busy(true, n === 1 ? "Looking at your photo…" : "Claude is scoring your photos… " + (b + 1) + " of " + batches.length, (b + 0.2) / (batches.length + 1));
-      const content = [{ type: "text", text:
-        contextLine() + "\n\nBelow are " + batches[b].length + " photos, each labeled with its id. Score every photo from 0 to 100 for how good it would be to post as one standout image. Weigh: sense of place and story, a real moment or emotion, light, composition, sharpness and focus, and whether it stands out. " +
-        "Edit potential counts: a photo that is a bit dark, flat or tilted and easy to fix with simple edits should only lose a few points. Blur, missed focus, motion smear, closed eyes, awkward faces, accidental shots, screenshots, documents and receipts should score low. " +
-        "When photos are near duplicates (bursts or the same scene), give the best one the higher score and set similar_to on the others to the id of that best one, otherwise similar_to is 0. " +
-        "note: 12 words or fewer, plain language, about this photo. issues: short words like blurry, tilted, dark, bright, cluttered, duplicate, or an empty list. Return every id exactly once." }];
-      for (const p of batches[b]) {
-        content.push({ type: "text", text: "Photo " + p.id });
+/* ---------------- best 15: score, pick one per scene, edit, save ---------------- */
+const BEST = 15, MIN_SCORE = 40;
+const SYS_PICK = "You are an experienced travel photo editor helping one person choose the best photos from their own trip to edit and post. Be honest, specific and consistent.";
+const SCENE_SCHEMA = {
+  type: "object", additionalProperties: false, required: ["duplicates"],
+  properties: { duplicates: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "same_as"],
+    properties: { id: { type: "integer" }, same_as: { type: "integer" } } } } }
+};
+const BATCH_EDIT_SCHEMA = {
+  type: "object", additionalProperties: false,
+  required: ["straighten", "crop", "aspect", "exposure", "contrast", "highlights", "shadows", "warmth", "tint", "vibrance", "saturation", "vignette"],
+  properties: {
+    straighten: { type: "number", description: "degrees, positive rotates clockwise" },
+    crop: { type: "object", additionalProperties: false, required: ["x", "y", "w", "h"],
+      properties: { x: { type: "number" }, y: { type: "number" }, w: { type: "number" }, h: { type: "number" } } },
+    aspect: { type: "string", enum: ["original", "4:5", "1:1", "3:2", "16:9", "9:16"] },
+    exposure: { type: "number" }, contrast: { type: "integer" }, highlights: { type: "integer" }, shadows: { type: "integer" },
+    warmth: { type: "integer" }, tint: { type: "integer" }, vibrance: { type: "integer" }, saturation: { type: "integer" },
+    vignette: { type: "integer" }
+  }
+};
+function editRules(style){
+  return contextLine() + "\nEdit style: " + STYLE_TEXT[style] + "\n\n" +
+    "Give settings for a simple photo editor. It applies, in order: straighten (rotates and fills the frame), crop, white balance, exposure, shadows, highlights, contrast, vibrance, saturation, vignette.\n" +
+    "- straighten: degrees, positive rotates clockwise. Only use it when a horizon or a clear vertical is visibly tilted; otherwise 0.\n" +
+    "- crop: fractions of the straightened frame. x and y are the top-left corner, w and h the size. The full frame is x 0, y 0, w 1, h 1. Crop to strengthen the composition or trim edge distractions, never tighter than needed.\n" +
+    "- aspect: the shape of your crop. " + ($("dest").value === "instagram" ? "For Instagram, prefer 4:5 or 1:1 when the subject fits, otherwise keep the original shape. " : "Keep the original shape unless another clearly helps. ") + "Your crop box should match this aspect in pixels.\n" +
+    "- exposure: stops from -1.5 to 1.5. contrast, highlights, shadows, warmth, tint, vibrance, saturation: -100 to 100, where 0 is no change. Negative highlights pull bright areas down, positive shadows lift dark areas. Positive warmth is more yellow, positive tint is more magenta. vignette: 0 to 100.\n" +
+    "Most good photos need small moves: exposure within about 0.4 and the rest within about 30. Keep skin tones and colors believable.\n";
+}
+function stopped(){ if (S.cancelled) throw new Error("Cancelled."); }
+
+/* heavy image work runs one at a time so the phone doesn't run out of memory */
+let heavy = Promise.resolve();
+function serial(fn){ const r = heavy.then(fn, fn); heavy = r.catch(() => {}); return r; }
+
+async function scoreAll(){
+  const todo = act().filter(p => p.score == null);
+  const n = todo.length;
+  const batches = [];
+  for (let i = 0; i < n; i += BATCH) batches.push(todo.slice(i, i + BATCH));
+  for (let b = 0; b < batches.length; b++) {
+    stopped();
+    busy(true, n === 1 ? "Looking at your photo…" : "Claude is scoring your photos… " + (b + 1) + " of " + batches.length, (b + 0.2) / (batches.length + 1));
+    const content = [{ type: "text", text:
+      contextLine() + "\n\nBelow are " + batches[b].length + " photos, each labeled with its id. Score every photo from 0 to 100 for how good it would be to post as one standout image. Weigh: sense of place and story, a real moment or emotion, light, composition, sharpness and focus, and whether it stands out. " +
+      "Edit potential counts: a photo that is a bit dark, flat or tilted and easy to fix with simple edits should only lose a few points. Blur, missed focus, motion smear, closed eyes, awkward faces, accidental shots, screenshots, documents and receipts should score low. " +
+      "When photos are near duplicates (bursts or the same scene), give the best one the higher score and set similar_to on the others to the id of that best one, otherwise similar_to is 0. " +
+      "note: 12 words or fewer, plain language, about this photo. issues: short words like blurry, tilted, dark, bright, cluttered, duplicate, or an empty list. Return every id exactly once." }];
+    for (const p of batches[b]) {
+      content.push({ type: "text", text: "Photo " + p.id });
+      content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: p.b64 } });
+    }
+    const out = await callClaude({ system: SYS_PICK, content, schema: RANK_SCHEMA, effort: "low", maxTokens: 16000 });
+    for (const r of (out.photos || [])) {
+      const p = todo.find(x => x.id === num(r.id, -1));
+      if (!p) continue;
+      p.score = clamp(Math.round(num(r.score, 0)), 0, 100);
+      p.note = noDashes(r.note); p.issues = (r.issues || []).map(String); p.similar = num(r.similar_to, 0);
+    }
+  }
+  todo.forEach(p => { if (p.score == null) { p.score = 0; p.note = "Not scored"; } });
+  rememberReviewed(todo.filter(p => p.note !== "Not scored"));
+}
+
+/* the line-up: best first, one per scene. Near-identical shots (same fingerprint) count as one; the higher score stays. */
+function buildQueue(){
+  const a = act();
+  const ranked = a.slice().sort((x, y) => (y.done ? 1 : 0) - (x.done ? 1 : 0) || y.score - x.score);   // ones already edited keep their scene
+  const keepers = [];
+  for (const p of ranked) {
+    if (p.done) { keepers.push(p); continue; }
+    if (p.dupOf && a.some(x => x.id === p.dupOf)) continue;
+    const sim = p.similar && a.find(x => x.id === p.similar);
+    if (sim && !(sim.similar === p.id && p.score >= sim.score)) continue;   // if two point at each other, the higher score stays
+    const twin = keepers.find(k => ham(k.hash, p.hash) <= SIMILAR);
+    if (twin) { p.similar = twin.id; continue; }
+    keepers.push(p);
+  }
+  let q = keepers.filter(p => p.done || p.score >= MIN_SCORE);
+  if (!q.some(p => !p.done)) q = q.concat(keepers.filter(p => !p.done).slice(0, 3));   // nothing strong: still offer the top few
+  S.queue = q.sort((x, y) => y.score - x.score);
+}
+
+/* a second look across the next candidates and the ones already edited, so no scene is done twice */
+async function sceneCheck(n){
+  for (let pass = 0; pass < 3; pass++) {
+    stopped();
+    const cand = S.queue.filter(p => !p.done).slice(0, n);
+    if (cand.every(p => p.checked)) return;
+    const kept = S.queue.filter(p => p.done || p.checked).slice(0, 60);
+    const fresh = S.queue.filter(p => !p.done && !p.checked).slice(0, Math.min(90 - kept.length, Math.max(30, n * 2)));
+    const set = kept.concat(fresh).sort((x, y) => y.score - x.score);
+    if (set.length > 1) {
+      busy(true, "Making sure no scene is picked twice…", 0.9);
+      const content = [{ type: "text", text: contextLine() + "\n\nThese are the strongest photos from the trip, best first. Each one should be a different scene or moment. " +
+        "Find the repeats: when two show the same scene, subject or moment (even from a slightly different angle, zoom or a second later), keep the better one and list the other in duplicates with same_as set to the id of the one you kept. " +
+        "A photo marked KEPT is already chosen: never list a KEPT photo as the duplicate, list the other one. Photos of different places, people or moments are not duplicates. If there are no repeats, return an empty list." }];
+      for (const p of set) {
+        content.push({ type: "text", text: "Photo " + p.id + (p.done ? " (KEPT)" : "") });
         content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: p.b64 } });
       }
-      const out = await callClaude({ system: sys, content, schema: RANK_SCHEMA, effort: "low", maxTokens: 16000 });
-      for (const r of (out.photos || [])) {
-        const p = S.photos.find(x => x.id === num(r.id, -1));
-        if (!p) continue;
-        p.score = clamp(Math.round(num(r.score, 0)), 0, 100);
-        p.note = noDashes(r.note); p.issues = (r.issues || []).map(String); p.similar = num(r.similar_to, 0);
+      const out = await callClaude({ system: SYS_PICK, content, schema: SCENE_SCHEMA, effort: "low", maxTokens: 16000 });
+      const gone = new Set();
+      for (const d of (out.duplicates || [])) {
+        let p = set.find(x => x.id === num(d.id, -1)), k = set.find(x => x.id === num(d.same_as, -1));
+        if (!p || !k || p === k) continue;
+        if (p.done && !k.done) { const t = p; p = k; k = t; }
+        if (p.done || gone.has(k) || gone.has(p)) continue;
+        p.dupOf = k.id; p.similar = k.id; gone.add(p);
       }
+      S.queue = S.queue.filter(p => !gone.has(p));
     }
-    S.photos.forEach(p => { if (p.score == null) { p.score = 0; p.note = "Not scored"; } });
-    rememberReviewed(todo.filter(p => p.note !== "Not scored"));
+    fresh.forEach(p => { p.checked = true; });
+  }
+}
 
-    // finalists: one per scene. Near-identical shots (same fingerprint) count as one; the higher score stays.
-    const ranked = S.photos.slice().sort((a, b) => b.score - a.score);
-    const keepers = [];
-    for (const p of ranked) {
-      if (p.similar && S.photos.some(x => x.id === p.similar)) continue;
-      const twin = keepers.find(k => ham(k.hash, p.hash) <= SIMILAR);
-      if (twin) { p.similar = twin.id; continue; }
-      p.similar = 0; keepers.push(p);
-    }
-    let finalists = keepers.slice(0, 8);
-    if (finalists.length === 0) finalists = ranked.slice(0, Math.min(8, ranked.length));
-    S.whyById = {};
+async function editOne(p, style, keepLoc, edge, name){
+  const b64 = await serial(async () => {
+    stopped();
+    const d = await decodeFile(p.file);
+    const c = scaledCanvas(d.img, d.w, d.h, EDIT_EDGE);
+    const out = c.toDataURL("image/jpeg", 0.88).split(",")[1];
+    freeCanvas(c); URL.revokeObjectURL(d.url); d.img.src = "";
+    return out;
+  });
+  stopped();
+  const ans = await callClaude({
+    system: "You are a skilled photo retoucher who helps one person edit their own travel photos.",
+    content: [{ type: "text", text: editRules(style) }, { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } }],
+    schema: BATCH_EDIT_SCHEMA, maxTokens: 16000
+  });
+  stopped();
+  const P = sanitizeEdit(ans);
+  const gps = keepLoc ? await photoGps(p.file) : null;
+  return serial(async () => {
+    stopped();
+    const d = await decodeFile(p.file);
+    try {
+      const cv = renderGeometry(d.img, d.w, d.h, P, edge, true);
+      applyTone(cv, P);
+      let blob = await new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error("Couldn't save the photo")), "image/jpeg", 0.92));
+      const th = scaledCanvas(cv, cv.width, cv.height, THUMB);
+      const hash = dhash(th), thumb = th.toDataURL("image/jpeg", 0.8), dims = cv.width + "x" + cv.height;
+      freeCanvas(th); freeCanvas(cv);
+      if (gps) { try { blob = await withGps(blob, gps.lat, gps.lon); } catch (e) {} }
+      return { p, file: new File([blob], name, { type: "image/jpeg" }), thumb, hash, dims, saved: false, round: S.round };
+    } finally { URL.revokeObjectURL(d.url); d.img.src = ""; }
+  });
+}
 
-    if (finalists.length > 1) {
-      busy(true, "Comparing the finalists…", batches.length / (batches.length + 1));
-      const content = [{ type: "text", text: contextLine() + "\n\nThese are the finalists from the trip. Every photo in your ranking must be a different scene or moment. " +
-        "If two show the same scene, subject or moment (even from a slightly different angle, zoom or a second later), keep only the better one in the ranking and list the other in duplicates with same_as set to the one you kept. " +
-        "Pick the single best one to edit and post, then rank the rest, best first. why: one plain, specific sentence about that photo, 20 words or fewer." }];
-      for (const p of finalists) {
-        const big = await jpegB64(p.file, FINAL_EDGE);
-        content.push({ type: "text", text: "Photo " + p.id });
-        content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: big.b64 } });
+async function editBatch(n){
+  await sceneCheck(n);
+  const todo = S.queue.filter(p => !p.done).slice(0, n);
+  if (!todo.length) { busy(false); renderBatch(); toast("No more good ones left in these photos."); return 0; }
+  // photos already saved from earlier rounds don't need to stay in memory
+  S.batch.forEach(it => { if (it.saved) it.file = null; });
+  S.round++;
+  const style = $("style").value, keepLoc = store.get("keepLoc", "1") === "1", edge = num($("exportSize").value, 4096);
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "");
+  let next = 0, finished = 0, made = 0, firstErr = null, fatal = null;
+  const say = () => busy(true, "Editing your best " + todo.length + "… " + finished + " of " + todo.length + " done", finished / todo.length);
+  say();
+  async function worker(){
+    while (next < todo.length && !S.cancelled) {
+      const i = next++, p = todo[i];
+      try {
+        const it = await editOne(p, style, keepLoc, edge, "trip-pick-" + stamp + "-" + String(i + 1).padStart(2, "0") + ".jpg");
+        p.done = true; S.batch.push(it); rememberMade(it.dims, it.hash, it.file.size); made++;
+      } catch (err) {
+        if (!firstErr) firstErr = err;
+        if (/key|credits|allowed/i.test(err.message)) { fatal = err; S.cancelled = true; }   // no point trying the rest
       }
-      const out = await callClaude({ system: sys, content, schema: FINAL_SCHEMA, maxTokens: 16000 });
-      const dupIds = new Set();
-      (out.duplicates || []).forEach(d => { const p = finalists.find(x => x.id === num(d.id, -1)), k = finalists.find(x => x.id === num(d.same_as, -1));
-        if (p && k && p !== k) { dupIds.add(p.id); p.similar = k.id; } });
-      finalists = finalists.filter(p => !dupIds.has(p.id));
-      const order = [];
-      (out.ranking || []).forEach(r => { const p = finalists.find(x => x.id === num(r.id, -1)); if (p && !order.includes(p)) { order.push(p); S.whyById[p.id] = noDashes(r.why); } });
-      finalists.forEach(p => order.includes(p) || order.push(p));
-      const best = finalists.find(x => x.id === num(out.best_id, -1)) || order[0];
-      S.finalists = [best].concat(order.filter(p => p !== best));
-    } else {
-      S.finalists = finalists;
-      S.whyById[finalists[0].id] = finalists[0].note;
+      finished++; if (!S.cancelled) say();
     }
-    busy(false);
-    renderResults();
-    choose(S.finalists[0]);
-    show("s2", true);
-    $("s2").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  await Promise.all([worker(), worker(), worker()]);
+  busy(false);
+  if (!made && firstErr) throw firstErr;
+  renderBatch(S.cancelled ? 0 : todo.length - made);
+  if (fatal) $("bErr").textContent = fatal.message;
+  show("sB", true);
+  $("sB").scrollIntoView({ behavior: "smooth", block: "start" });
+  return made;
+}
+
+async function runBatch(n, errBox){
+  $("rankErr").textContent = ""; $("bErr").textContent = "";
+  if (!store.get("key", "")) { openSettings(); return; }
+  if (S.batchRunning) return;
+  S.batchRunning = true; S.cancelled = false;
+  try {
+    await scoreAll();
+    buildQueue();
+    markScores();
+    await editBatch(n);
   } catch (err) {
     busy(false);
-    $("rankErr").textContent = err.message;
+    if (S.batch.length) { renderBatch(); show("sB", true); }
+    $(errBox).textContent = err.message === "Cancelled." ? "Stopped." + (S.batch.length ? " The ones already edited are below." : "") : err.message;
   }
-});
+  S.batchRunning = false; S.cancelled = false;
+  $("rankEstimate").textContent = estimateText();
+}
+$("rankBtn").addEventListener("click", () => { resetAfter(1); runBatch(BEST, "rankErr"); });
+document.querySelectorAll("#sB .more").forEach(b => b.addEventListener("click", () => { resetAfter(2); runBatch(+b.dataset.n, "bErr"); }));
+
+function markScores(){
+  S.photos.forEach(p => {
+    const cell = $("cell" + p.id); if (!cell || p.score == null) return;
+    let b = cell.querySelector(".badge"); if (!b) { b = document.createElement("div"); b.className = "badge"; cell.appendChild(b); }
+    b.textContent = p.score; b.classList.toggle("top", !!p.done || S.queue.includes(p));
+    cell.classList.toggle("dim", p.score < MIN_SCORE);
+  });
+}
+function unsaved(){ return S.batch.filter(it => it.file && !it.saved); }
+function renderBatch(failed){
+  markScores();
+  const g = $("bGrid"); g.innerHTML = "";
+  S.batch.slice().sort((x, y) => y.round - x.round || y.p.score - x.p.score).forEach(it => {
+    const c = document.createElement("div"); c.className = "cell";
+    c.innerHTML = '<img alt="" src="' + it.thumb + '"><div class="badge' + (it.saved ? "" : " top") + '">' + (it.saved ? "Saved ✓" : "New") + "</div>";
+    c.onclick = () => { choose(it.p); runEdit($("style").value); };
+    g.appendChild(c);
+  });
+  const u = unsaved().length, left = S.queue.filter(p => !p.done).length;
+  $("bInfo").textContent = S.batch.length + " edited so far." + (u ? " " + u + " not saved to Photos yet." : " All saved.") +
+    (failed ? " " + failed + " couldn't be edited this time; they stay in line for the next round." : "");
+  $("bSave").disabled = !u; $("bSave").textContent = u ? "Save " + u + " to Photos" : "All saved to Photos";
+  $("bLeft").textContent = left ? left + " more good one" + (left === 1 ? "" : "s") + " left in these photos." : "That's all the good ones in these photos. Add more photos to keep going.";
+  document.querySelectorAll("#sB .more").forEach(b => { b.disabled = !left; });
+  show("bChunks", false); $("bChunks").innerHTML = "";
+}
+function shareItems(items){
+  const files = items.map(it => it.file);
+  if (!(navigator.canShare && navigator.canShare({ files }))) {
+    if (items.length > 5) { chunkButtons(); toast("Too many to hand over at once here. Save them in groups below.", 4000); }
+    else toast("This browser can't save photos from here. Tap a photo, then use Save file.", 4500);
+    return;
+  }
+  navigator.share({ files }).then(() => {
+    items.forEach(it => { it.saved = true; }); renderBatch(); toast("Done. Check your Photos.");
+  }).catch(e => {
+    if (e && e.name === "AbortError") return;
+    if (items.length > 5) { chunkButtons(); toast("That was too many at once. Save them in groups below.", 4000); }
+    else toast("Saving didn't work. Tap a photo, then use Save file.", 4500);
+  });
+}
+function chunkButtons(){
+  const box = $("bChunks"); box.innerHTML = ""; const u = unsaved();
+  for (let i = 0; i < u.length; i += 5) {
+    const part = u.slice(i, i + 5);
+    const b = document.createElement("button"); b.className = "btn secondary"; b.style.padding = "10px";
+    b.textContent = "Save " + (i + 1) + " to " + (i + part.length);
+    b.onclick = () => shareItems(part.filter(it => it.file && !it.saved));
+    box.appendChild(b);
+  }
+  show("bChunks", u.length > 0);
+}
+$("bSave").addEventListener("click", () => { const u = unsaved(); if (u.length) shareItems(u); });
+function clearBatch(){
+  S.batch = []; S.queue = []; S.round = 0; show("sB", false); $("bGrid").innerHTML = ""; $("bErr").textContent = "";
+}
 
 /* ---------------- step 2: results ---------------- */
 function renderResults(){
@@ -903,13 +1176,7 @@ async function runEdit(style){
     setLocation(userLoc);
     busy(true, "Claude is planning the edit and writing captions…", 0.45);
     const voice = store.get("voice", "").trim();
-    const prompt = contextLine() + "\nEdit style: " + STYLE_TEXT[style] + "\n\n" +
-      "Give settings for a simple photo editor. It applies, in order: straighten (rotates and fills the frame), crop, white balance, exposure, shadows, highlights, contrast, vibrance, saturation, vignette.\n" +
-      "- straighten: degrees, positive rotates clockwise. Only use it when a horizon or a clear vertical is visibly tilted; otherwise 0.\n" +
-      "- crop: fractions of the straightened frame. x and y are the top-left corner, w and h the size. The full frame is x 0, y 0, w 1, h 1. Crop to strengthen the composition or trim edge distractions, never tighter than needed.\n" +
-      "- aspect: the shape of your crop. " + ($("dest").value === "instagram" ? "For Instagram, prefer 4:5 or 1:1 when the subject fits, otherwise keep the original shape. " : "Keep the original shape unless another clearly helps. ") + "Your crop box should match this aspect in pixels.\n" +
-      "- exposure: stops from -1.5 to 1.5. contrast, highlights, shadows, warmth, tint, vibrance, saturation: -100 to 100, where 0 is no change. Negative highlights pull bright areas down, positive shadows lift dark areas. Positive warmth is more yellow, positive tint is more magenta. vignette: 0 to 100.\n" +
-      "Most good photos need small moves: exposure within about 0.4 and the rest within about 30. Keep skin tones and colors believable.\n" +
+    const prompt = editRules(style) +
       "- notes: 2 to 5 short plain sentences saying what you changed and why.\n\n" +
       captionRules(voice) +
       "- alt_text: one sentence describing the photo for people using screen readers.\n" +
@@ -1327,7 +1594,7 @@ $("saveKey").onclick = async () => {
     refreshKeyBanner();
   } catch (err) { $("keyMsg").innerHTML = '<div class="err">' + esc(err.message) + "</div>"; }
 };
-$("cancelBtn").onclick = () => { try { S.abort && S.abort.abort(); } catch (e) {} busy(false); };
+$("cancelBtn").onclick = () => { S.cancelled = true; S.aborts.forEach(a => { try { a.abort(); } catch (e) {} }); try { S.abort && S.abort.abort(); } catch (e) {} if (!S.batchRunning) busy(false); else busy(true, "Stopping…", 1); };
 
 /* remember choices */
 ["dest", "style", "locInput"].forEach(id => { const v = store.get(id, ""); if (v) $(id).value = v; $(id).addEventListener("change", () => store.set(id, $(id).value)); });
@@ -1349,7 +1616,8 @@ if (!store.get("key", "")) {
     .then(k => { if (k && /^sk-ant-/.test(k)) { store.set("key", k); refreshKeyBanner(); } }).catch(() => {});
 } else backupKey(store.get("key", ""));
 $("forgetSeen").onclick = () => { S.seen = {}; idb().then(db => db.transaction("kv", "readwrite").objectStore("kv").delete("seen")).catch(() => {}); renderSeenCount(); toast("Reviewed photos forgotten"); };
-loadReviewed();
+loadReviewed(); loadMade();
+S.days = clamp(Math.round(num(store.get("days", 0), 0)), 0, 5); buildDayChips();
 renderSpend(); refreshKeyBanner();
 loadLast().then(l => { if (l && l.blob) { LAST = l; show("lastPost", true); } });
 </script>
